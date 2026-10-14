@@ -4,13 +4,9 @@
   "entry": "client.js",
   "host_contract": "screen-media.v1",
   "may": [
-    "tools.invoke",
     "media.read",
     "media.publish"
   ],
-  "tools": {
-    "image.generate": "image"
-  },
   "assets": [
     {
       "name": "client.js",

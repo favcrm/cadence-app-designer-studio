@@ -34,8 +34,10 @@ chmod 755 "$STAGE/$KIT/run.sh"
 cat > "$STAGE/$KIT/INSTALL.md" <<'MD'
 # Designer Studio — limited v0.1 prerelease
 
-Requires a compatible Cadence host (qualified against 0.1.1, build
-0b36010fdd0ed660ab3a7145f3d1d80ee8b43bbf). Edit, video and reuse are unavailable.
+Requires a Cadence host containing CAD-1440 media-only context admission
+(qualified against 0.1.1, source cda32d0b6deb8917af5d0e609f8b849608bb4bb5).
+Earlier build 0b36010fdd0ed660ab3a7145f3d1d80ee8b43bbf does not support this
+zero-tool-alias package. Edit, video and reuse are unavailable.
 Generation, workspace library curation and original download require the
 host's current permissions, declarations, bindings and consumed mount.
 
