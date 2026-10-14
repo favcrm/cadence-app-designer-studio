@@ -28,11 +28,11 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: favcrm/cadence
-          ref: cda32d0b6deb8917af5d0e609f8b849608bb4bb5
+          ref: b182c4a8b032adc074a77bfc6390b87358ec09c8
           path: .host-contract
           persist-credentials: false
       - name: Verify the host contract pin
-        run: test "$(git -C .host-contract rev-parse HEAD)" = cda32d0b6deb8917af5d0e609f8b849608bb4bb5
+        run: test "$(git -C .host-contract rev-parse HEAD)" = b182c4a8b032adc074a77bfc6390b87358ec09c8
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 12.2.1
