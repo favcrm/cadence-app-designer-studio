@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Existing app checks; caller must hold the normal build-slot admission.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+: "${DSN_HOST_SOURCE:?point to the qualified 0b36010f host source}"
+checks() {
+  pnpm run typecheck &&
+  node acceptance/image-generation-bridge.mjs &&
+  node acceptance/original-download-bridge.mjs &&
+  pnpm run build &&
+  node scripts/package-screen.mjs &&
+  cadence app check package --json &&
+  bash -n scripts/package-release.sh
+}
+if [[ ${1:-} == --receipt ]]; then
+  rc=0
+  checks >&2 || rc=$?
+  printf 'head=%s lane=%s steps=app-checks:%s rc=%s at=%s\n' \
+    "$(git rev-parse HEAD)" "${CADENCE_ALIAS:-${USER:-external}}" "$rc" "$rc" "$(date +%s)"
+  exit "$rc"
+fi
+checks

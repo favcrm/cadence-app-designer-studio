@@ -1,0 +1,51 @@
+name: app-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  app-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      DSN_HOST_SOURCE: ${{ github.workspace }}/.host-contract
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Checkout the compatible host contract
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: favcrm/cadence
+          ref: cda32d0b6deb8917af5d0e609f8b849608bb4bb5
+          path: .host-contract
+          persist-credentials: false
+      - name: Verify the host contract pin
+        run: test "$(git -C .host-contract rev-parse HEAD)" = cda32d0b6deb8917af5d0e609f8b849608bb4bb5
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 12.2.1
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: node acceptance/image-generation-bridge.mjs
+      - run: node acceptance/original-download-bridge.mjs
+      - run: pnpm run build
+      - run: node scripts/package-screen.mjs
+      - name: Verify committed package bytes and provenance
+        run: git diff --exit-code -- package
