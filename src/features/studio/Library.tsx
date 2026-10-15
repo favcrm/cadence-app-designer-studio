@@ -8,9 +8,11 @@ interface Props {
   actor: StudioActor | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onCreate: () => void;
+  createOpen: boolean;
 }
 
-export function Library({ assets, actor, selectedId, onSelect }: Props) {
+export function Library({ assets, actor, selectedId, onSelect, onCreate, createOpen }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<LibraryScope>("workspace");
   const [kind, setKind] = useState<LibraryKind>("all");
@@ -28,7 +30,10 @@ export function Library({ assets, actor, selectedId, onSelect }: Props) {
 
   return (
     <section aria-labelledby="ds-library-heading" className="ds-panel">
-      <h2 id="ds-library-heading">Library</h2>
+      <header className="ds-library-header">
+        <h2 id="ds-library-heading">Library</h2>
+        <button type="button" className="btn btn-primary" onClick={onCreate} aria-expanded={createOpen}>New creation</button>
+      </header>
       <div className="ds-row">
         <label className="ds-field">
           <span>Search</span>

@@ -264,6 +264,10 @@ export function connectFrameHost(): StudioHost {
       closeWith("malformed_push");
       return;
     }
+    if (data.context_id.length === 0) {
+      closeWith("active_context_required");
+      return;
+    }
     const key = JSON.stringify([data.install_id, data.digest, data.context_id, data.tag]);
     if (scope !== null && key !== scope) {
       closeWith("scope_changed");

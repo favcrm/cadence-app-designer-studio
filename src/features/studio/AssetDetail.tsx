@@ -72,7 +72,7 @@ export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host,
   }
 
   return (
-    <aside className="drawer" aria-labelledby="ds-asset-heading">
+    <aside className="drawer ds-drawer" aria-labelledby="ds-asset-heading">
       <header className="dhead">
         <h3 id="ds-asset-heading">{asset.title}</h3>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close asset details">Close</button>

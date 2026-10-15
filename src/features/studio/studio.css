@@ -3,8 +3,9 @@
    and the frame additions in src/daemon/screen_kit.css). This file defines no
    palette or font of its own and never styles host or shared-kit markup.
    Every rule here is scoped under .studio with ds-* names. Kit classes
-   (.btn, .btn-primary, .btn-ghost, .field, .tabs/.tab, .chip, .card/.tcard,
-   .badge, .seg, .drawer/.dhead/.dbody/.dfoot) are used as-is in JSX. */
+   (.btn, .btn-primary, .btn-ghost, .field, .chip, .card/.tcard,
+   .badge, .seg, .drawer/.dhead/.dbody/.dfoot) supply the control appearance;
+   ds-* classes adapt only app-local layout, including the inline drawer. */
 .studio {
   font: var(--text-body)/1.45 var(--font-sans);
   color: var(--color-ink-300);
@@ -15,7 +16,9 @@
 .studio h2 { font-size: var(--text-section); font-weight: 600; color: var(--color-ink-100); margin: 0 0 8px; }
 .studio h3 { font-size: var(--text-cardtitle); font-weight: 600; color: var(--color-ink-100); margin: 0; }
 .studio .ds-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
-.studio .ds-panel { display: grid; gap: 10px; }
+.studio .ds-panel { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.studio .ds-library-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.studio .ds-library-header h2 { margin: 0; }
 .studio .ds-field { display: grid; gap: 4px; min-width: 120px; flex: 1; font-size: var(--text-secondary); color: var(--color-ink-400); }
 .studio .ds-field small,
 .studio .ds-hint,
@@ -25,18 +28,30 @@
 .studio .ds-note.ds-ok { border-color: var(--color-ok); color: var(--color-ok); }
 .studio .ds-note.ds-warn { border-color: color-mix(in srgb, var(--color-warn) 50%, transparent); color: var(--color-warn); }
 .studio .ds-problems { margin: 0; padding-left: 18px; color: var(--color-warn); }
-.studio .ds-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.studio .ds-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: 8px; }
 .studio .ds-tile { width: 100%; text-align: left; display: grid; gap: 4px; padding: 10px; }
 .studio .ds-tile[aria-pressed="true"] { border-color: var(--color-accent); }
 .studio .ds-kind { text-transform: uppercase; font: 500 var(--text-micro) var(--font-mono); color: var(--color-ink-500); }
-.studio .ds-library { display: grid; gap: 12px; }
+.studio .ds-library { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
+.studio .ds-canvas { display: grid; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
+.studio .ds-drawer { position: sticky; top: 12px; right: auto; z-index: auto; width: 100%; min-width: 0; height: auto; max-height: calc(100dvh - 24px); overflow-wrap: anywhere; }
+.studio .ds-drawer > .dhead { justify-content: space-between; }
+.studio .ds-drawer > .dhead h3 { min-width: 0; }
+.studio .ds-drawer > .dhead > button { flex-shrink: 0; }
+.studio .ds-drawer > .dfoot { flex-wrap: wrap; }
+.studio .ds-drawer > .dfoot .ds-hint { margin: 0; }
+.studio .ds-drawer .ds-field { min-width: 0; }
+.studio .ds-drawer .field { min-width: 0; max-width: 100%; }
 .studio .ds-jobs { padding-left: 18px; margin: 0; color: var(--color-ink-400); font-size: var(--text-secondary); }
 .studio .ds-prompt { white-space: pre-wrap; color: var(--color-ink-200); }
-.studio .ds-drawer-body { display: grid; gap: 10px; }
-.studio .ds-task-field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; }
+.studio .ds-drawer-body { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.studio .ds-task-field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; min-width: 0; }
 .studio .ds-task-field legend { font-size: var(--text-secondary); color: var(--color-ink-400); padding: 0; margin-bottom: 4px; }
 .studio .ds-task-seg { flex-wrap: wrap; }
 .studio .ds-task-seg > button { flex: 0 0 auto; }
 @media (min-width: 900px) {
-  .studio .ds-library { grid-template-columns: 1fr 320px; }
+  .studio .ds-library.ds-pane-present { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); }
+}
+@media (max-width: 899px) {
+  .studio .ds-pane-present > .ds-canvas { display: none; }
 }

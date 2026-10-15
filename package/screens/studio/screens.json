@@ -11,19 +11,19 @@
     {
       "name": "client.js",
       "media_type": "text/javascript",
-      "sha256": "sha256:de792ffd8be75d165e713bc1cdd3565b8384ca5a534eb8dec83cd689adbc1fbb",
-      "size": 215896
+      "sha256": "sha256:20dad08bfe453a6d79a513b26c8c9afbc782c95eb1b8feab21568bf1c5aee45e",
+      "size": 218615
     },
     {
       "name": "styles.css",
       "media_type": "text/css",
-      "sha256": "sha256:b095bdbee0d60358a485cc4d5a5e633569352a1a7b840bd559549f0c70139330",
-      "size": 2068
+      "sha256": "sha256:adde063a23d4a4effcde1c8ebef619c706d2def541512122f14611bcd01866ab",
+      "size": 3027
     }
   ],
   "provenance": {
-    "source_digest": "sha256:2f649d236d08f6a5fefc3fa70424e5dec5ba310ef0d026fdc2f96d2f7b9c4664",
-    "sdk_digest": "sha256:f6c3a4626381a4f63ab847fdccbcaa272448a659ffb4c9c1c13b4aa6f865b0cb",
+    "source_digest": "sha256:5cbb9ccbf8e398efa0bf4523afd6491c82310cc53ca6808c68281f26786a22da",
+    "sdk_digest": "sha256:75c42ab0b076abb293299ec754ce58fa0b00852f1556e6839283c1516ef81e63",
     "toolchain_digest": "sha256:9a147dfb4024dab6e6af49661b29c78f679c6847bdd45c2da0f9bd806f4cd88f"
   }
 }
