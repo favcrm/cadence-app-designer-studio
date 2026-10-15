@@ -39,6 +39,7 @@ export function CreatePanel(props: Props) {
               key={t.id}
               type="button"
               aria-pressed={draft.task === t.id}
+              aria-describedby={!TASK_STATUS[t.id].enabled ? `ds-task-reason-${t.id}` : undefined}
               disabled={!TASK_STATUS[t.id].enabled}
               onClick={() => setDraft({ ...draft, task: t.id, model: modelFor(t.id) })}
             >
@@ -46,8 +47,10 @@ export function CreatePanel(props: Props) {
             </button>
           ))}
         </div>
+        {TASKS.filter((t) => !TASK_STATUS[t.id].enabled).map((t) => (
+          <p key={t.id} id={`ds-task-reason-${t.id}`} className="ds-note" role="note">{t.label}: {TASK_STATUS[t.id].reason}</p>
+        ))}
       </fieldset>
-      {!TASK_STATUS[draft.task].enabled && <p className="ds-note" role="note">{TASK_STATUS[draft.task].reason}</p>}
 
       <label className="ds-field">
         <span>Prompt</span>

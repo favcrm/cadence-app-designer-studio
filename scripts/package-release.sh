@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-"$ROOT/dist/release"}
-KIT=designer-studio-v0.1.0-preview.1
+KIT=designer-studio-v0.1.0-preview.2
 mkdir -p "$OUT"
 STAGE=$(mktemp -d)
 trap 'rm -rf -- "$STAGE"' EXIT
@@ -42,10 +42,13 @@ Generation, workspace library curation and original download require the
 host's current permissions, declarations, bindings and consumed mount.
 
 From an operator terminal, inspect `./run.sh check`, then run
-`./run.sh install`. Installation is unapproved and grants nothing. Keep the
-returned installation ID and digest. Explicit approval, image connection
-binding and context setup are separate supported host actions; no paid
-execution or automatic consent is performed by this kit.
+`./run.sh install`. Operator installation records consent and may approve
+supported local workflow execution, as reported by the native receipt.
+Inspect the returned approval, consent and `execution_note`; keep the stable
+installation ID and digest. Installation does not authorize outward effects
+or paid generation. A valid image capability/connection binding, current
+active context/mount and host-drawn funding confirmation remain separate
+requirements; do not request approval again when already approved.
 
 If the same app is already installed, stop: do not remove it or install a
 second copy. Use the supported catalog upgrade-check/upgrade flow with its
