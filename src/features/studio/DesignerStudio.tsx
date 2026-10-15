@@ -24,6 +24,9 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     case "catalog_loading":
       unavailableText = "Loading the workspace catalog from Cadence.";
       break;
+    case "active_context_required":
+      unavailableText = "Select an active Designer Studio context in Cadence, then reopen this screen to load the workspace catalog. This screen cannot create or approve a context.";
+      break;
     case "media_read_not_advertised":
       unavailableText = "Cadence has not enabled workspace catalog access for this screen. Ask an operator to check the active app context and host setup.";
       break;

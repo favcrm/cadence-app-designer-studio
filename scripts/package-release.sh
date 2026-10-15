@@ -50,6 +50,13 @@ or paid generation. A valid image capability/connection binding, current
 active context/mount and host-drawn funding confirmation remain separate
 requirements; do not request approval again when already approved.
 
+Before opening the screen, inspect `cadence --org local app context ls` with
+that installation ID. If it has no active context, the operator creates one
+using `cadence --org local app context create` with the installation ID,
+`--label "Studio"` and a unique `--request-id`. Select the active context and
+reopen the screen. Context creation grants no provider authority or funding.
+Reuse existing host configuration; do not enroll duplicate credentials.
+
 If the same app is already installed, stop: do not remove it or install a
 second copy. Use the supported catalog upgrade-check/upgrade flow with its
 current digest and generation. Rollback is an operator decision using a
