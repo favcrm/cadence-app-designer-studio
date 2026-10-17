@@ -5,12 +5,16 @@
    Every rule here is scoped under .studio with ds-* names. Kit classes
    (.btn, .btn-primary, .btn-ghost, .field, .chip, .card/.tcard,
    .badge, .seg, .drawer/.dhead/.dbody/.dfoot) supply the control appearance;
-   ds-* classes adapt only app-local layout, including the inline drawer. */
+   ds-* classes adapt only app-local layout, including the full-height drawer. */
 .studio {
   font: var(--text-body)/1.45 var(--font-sans);
   color: var(--color-ink-300);
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 0;
   padding: 12px;
 }
 .studio h2 { font-size: var(--text-section); font-weight: 600; color: var(--color-ink-100); margin: 0 0 8px; }
@@ -18,6 +22,7 @@
 .studio .ds-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
 .studio .ds-panel { display: grid; gap: 10px; min-width: 0; align-content: start; }
 .studio .ds-library-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.studio .ds-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .studio .ds-library-header h2 { margin: 0; }
 .studio .ds-field { display: grid; gap: 4px; min-width: 120px; flex: 1; font-size: var(--text-secondary); color: var(--color-ink-400); }
 .studio .ds-field small,
@@ -32,9 +37,9 @@
 .studio .ds-tile { width: 100%; text-align: left; display: grid; gap: 4px; padding: 10px; }
 .studio .ds-tile[aria-pressed="true"] { border-color: var(--color-accent); }
 .studio .ds-kind { text-transform: uppercase; font: 500 var(--text-micro) var(--font-mono); color: var(--color-ink-500); }
-.studio .ds-library { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
-.studio .ds-canvas { display: grid; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
-.studio .ds-drawer { position: sticky; top: 12px; right: auto; z-index: auto; width: 100%; min-width: 0; height: auto; max-height: calc(100dvh - 24px); overflow-wrap: anywhere; }
+.studio .ds-library { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; flex: 1; min-height: 0; }
+.studio .ds-canvas { display: grid; align-content: start; gap: 12px; min-width: 0; overflow: auto; overflow-wrap: anywhere; }
+.studio .ds-drawer { position: relative; top: auto; right: auto; z-index: auto; display: flex; flex-direction: column; width: 100%; min-width: 0; height: 100%; max-height: none; min-height: 0; overflow-wrap: anywhere; }
 .studio .ds-drawer > .dhead { justify-content: space-between; }
 .studio .ds-drawer > .dhead h3 { min-width: 0; }
 .studio .ds-drawer > .dhead > button { flex-shrink: 0; }
@@ -44,11 +49,21 @@
 .studio .ds-drawer .field { min-width: 0; max-width: 100%; }
 .studio .ds-jobs { padding-left: 18px; margin: 0; color: var(--color-ink-400); font-size: var(--text-secondary); }
 .studio .ds-prompt { white-space: pre-wrap; color: var(--color-ink-200); }
-.studio .ds-drawer-body { display: grid; gap: 10px; min-width: 0; align-content: start; }
+.studio .ds-drawer-body { display: grid; flex: 1; overflow-y: auto; gap: 10px; min-width: 0; min-height: 0; align-content: start; }
 .studio .ds-task-field { border: 0; padding: 0; margin: 0; display: grid; gap: 6px; min-width: 0; }
 .studio .ds-task-field legend { font-size: var(--text-secondary); color: var(--color-ink-400); padding: 0; margin-bottom: 4px; }
 .studio .ds-task-seg { flex-wrap: wrap; }
 .studio .ds-task-seg > button { flex: 0 0 auto; }
+.studio .ds-asset-preview { display: grid; place-items: center; aspect-ratio: 1; width: 100%; overflow: hidden; border-radius: var(--radius-sm, 6px); background: var(--color-ink-900); }
+.studio .ds-asset-preview img { width: 100%; height: 100%; object-fit: contain; }
+.studio .ds-tile .ds-asset-preview img { object-fit: cover; }
+.studio .ds-lineage { display: grid; gap: 4px; }
+.studio .ds-reference-action { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.studio .ds-picker { color: var(--color-ink-200); background: var(--color-ink-950); border: 1px solid var(--color-ink-700); border-radius: var(--radius-md, 10px); width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 16px; }
+.studio .ds-picker::backdrop { background: color-mix(in srgb, var(--color-ink-950) 75%, transparent); }
+.studio .ds-picker .ds-field { margin-bottom: 12px; }
+.studio .ds-picker-grid { max-height: 55dvh; overflow-y: auto; }
+.studio .ds-picker-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 14px; }
 @media (min-width: 900px) {
   .studio .ds-library.ds-pane-present { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); }
 }

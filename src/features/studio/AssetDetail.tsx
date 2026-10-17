@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Receipt, StudioAsset, StudioHost, StudioJob } from "../../host/port";
-import { describeCreator, lifecycleLabel, reuseDraft } from "./model";
+import { describeCreator, lifecycleLabel } from "./model";
+import { AssetPreview } from "./AssetPreview";
 import { newRequestId } from "./state";
-import type { CreateDraft } from "./types";
 
 interface Props {
   asset: StudioAsset;
@@ -12,7 +12,9 @@ interface Props {
   canDownload: boolean;
   lineageJobs: StudioJob[];
   host: StudioHost;
-  onReuse: (draft: CreateDraft) => void;
+  canRefine: boolean;
+  sourceAssets: StudioAsset[];
+  onRefine: (asset: StudioAsset) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -20,9 +22,10 @@ interface Props {
  *  curates this same asset into the workspace library: the original bytes and
  *  id are unchanged, and the host checks the revision and the viewer's mutation
  *  role before it applies. */
-export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host, onReuse, onClose }: Props) {
+export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceAssets, lineageJobs, host, onRefine, onClose }: Props) {
   const [note, setNote] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const alive = useRef(false);
   useEffect(() => {
     alive.current = true;
@@ -50,6 +53,7 @@ export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host,
         case "awaiting_host_confirmation": return "Waiting for Cadence to confirm adding this to the workspace library.";
         case "pending": return "Publishing is in progress. Check the workspace library.";
         case "revision_conflict": return `This asset changed (revision ${r.currentRevision}); reload before publishing.`;
+        case "chat_attached":
         case "generation_result":
         case "download_started": return "Publishing is not confirmed. Check the workspace library before trying again.";
         case "refused": return r.text;
@@ -71,6 +75,16 @@ export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host,
     if (alive.current) setDownloading(false);
   }
 
+  async function refine() {
+    if (!canRefine || attaching || asset.kind !== "image") return;
+    setAttaching(true);
+    const error = await onRefine(asset);
+    if (alive.current) {
+      setAttaching(false);
+      setNote(error ?? "Attached in chat. Describe your changes and send when ready.");
+    }
+  }
+
   return (
     <aside className="drawer ds-drawer" aria-labelledby="ds-asset-heading">
       <header className="dhead">
@@ -78,9 +92,16 @@ export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host,
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close asset details">Close</button>
       </header>
       <div className="dbody ds-drawer-body">
+        <AssetPreview asset={asset} host={host} />
         <p className="ds-meta">{asset.kind} · {describeCreator(asset.creator)} · {lifecycleLabel(asset)} · revision {asset.revision}</p>
         {asset.prompt && <p className="ds-prompt">{asset.prompt}</p>}
-        {asset.lineage && asset.lineage.length > 0 && <p className="ds-meta">From {asset.lineage.length} earlier asset(s).</p>}
+        {asset.lineage && asset.lineage.length > 0 && (
+          <div className="ds-lineage">
+            <span className="ds-hint">Refined from</span>
+            {asset.lineage.map((id) => <span key={id}>{sourceAssets.find((source) => source.id === id)?.title ?? id}</span>)}
+            <span className="ds-hint">The source image is unchanged.</span>
+          </div>
+        )}
         {lineageJobs.length > 0 && (
           <ul className="ds-jobs">
             {lineageJobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {j.note}</li>)}
@@ -89,11 +110,11 @@ export function AssetDetail({ asset, canPublish, canDownload, lineageJobs, host,
         {note && <p className="ds-note" role="status">{note}</p>}
       </div>
       <div className="dfoot">
-        <button type="button" className="btn" disabled title={unavailable} onClick={() => onReuse(reuseDraft(asset))}>Reuse in Create</button>
-        <button type="button" className="btn" disabled={!canDownload || downloading} title={canDownload ? undefined : unavailable} onClick={download}>Download original</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!canRefine || attaching || asset.kind !== "image"} title={canRefine ? undefined : "Image chat context is not available on this host."} onClick={() => void refine()}>{attaching ? "Attaching…" : "Refine in chat"}</button>
+        <button type="button" className="btn btn-sm" disabled={!canDownload || downloading} title={canDownload ? undefined : unavailable} onClick={download}>Download original</button>
         {!published && (
-          <button type="button" className="btn btn-primary" disabled={!canPublish} title={canPublish ? undefined : "Publishing is not available in this workspace."} onClick={publish}>
-            Add to workspace library
+          <button type="button" className="btn btn-sm" disabled={!canPublish} title={canPublish ? undefined : "Publishing is not available in this workspace."} onClick={publish}>
+            Add to library
           </button>
         )}
       </div>

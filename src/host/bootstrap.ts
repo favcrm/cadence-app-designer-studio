@@ -8,7 +8,7 @@
  * `screen-media.v1`. The host's PUSH lists the media verbs this mount may use
  * in `actions`; the frame calls only those, with closed arguments. The parent
  * holds the action token, session and creator, so the frame sends none of
- * them. Reuse is not implemented here.
+ * them. Refine in chat only queues an image in the host composer.
  */
 import {
   NO_CAPABILITIES,
@@ -139,6 +139,11 @@ export function connectFrameHost(): StudioHost {
   } | null = null;
   let downloadLocked = false;
   let dlSeq = 0;
+  let previewSupport = false;
+  let chatReferenceSupport = false;
+  // Thumbnails, the picker and the detail drawer share the bounded call queue.
+  // Serialize preview reads so a large Library cannot overflow the host's eight calls.
+  let previewTail: Promise<void> = Promise.resolve();
 
   function derive(): StudioSnapshot {
     if (closedReason) return { status: "unavailable", reason: closedReason };
@@ -153,6 +158,8 @@ export function connectFrameHost(): StudioHost {
         publish: verbs.has("media.publish"),
         generate: runReceiptSupport && verbs.has("run.start"),
         download: downloadSupport && verbs.has("media.original.download"),
+        refineInChat: chatReferenceSupport && verbs.has("media.chat.attach"),
+        previews: previewSupport,
       },
       currentActor: catalog.actor,
       assets: catalog.assets,
@@ -195,7 +202,7 @@ export function connectFrameHost(): StudioHost {
     dl.resolve(receipt);
   }
 
-  function call(verb: "media.read" | "media.publish", args: Record<string, unknown>): Promise<Outcome> {
+  function call(verb: "media.read" | "media.publish" | "media.chat.attach", args: Record<string, unknown>): Promise<Outcome> {
     if (closedReason) return Promise.resolve({ ok: false, refusal: NOT_SENT });
     if (pending.size >= CALLS_IN_FLIGHT_MAX) return Promise.resolve({ ok: false, refusal: BUSY });
     callSeq += 1;
@@ -259,6 +266,12 @@ export function connectFrameHost(): StudioHost {
     });
   }
 
+  // Chat refinement completes outside this frame. Returning to the Library
+  // reads current retained results; it never polls, approves or generates.
+  function onFocus(): void {
+    if (!closedReason && scope && verbs.has("media.read") && !loadInFlight) startLoad();
+  }
+
   function onPush(data: Record<string, unknown>): void {
     if (data.tag !== bootTag || typeof data.install_id !== "string" || typeof data.digest !== "string" || typeof data.context_id !== "string") {
       closeWith("malformed_push");
@@ -277,11 +290,13 @@ export function connectFrameHost(): StudioHost {
     const actions: unknown[] = data.v === 2 && Array.isArray(data.actions) ? data.actions : [];
     verbs = new Set(
       actions.filter(
-        (v): v is string => v === "media.read" || v === "media.publish" || v === "run.start" || v === "media.original.download",
+        (v): v is string => v === "media.read" || v === "media.publish" || v === "run.start" || v === "media.original.download" || v === "media.chat.attach",
       ),
     );
     runReceiptSupport = data.v === 2 && data.run_receipts === 1;
     downloadSupport = data.v === 2 && data.original_downloads === 1;
+    previewSupport = data.v === 2 && data.media_previews === 1;
+    chatReferenceSupport = data.v === 2 && data.media_chat_references === 1;
     if (verbs.has("media.read") && !loadInFlight && catalog.kind !== "ready") startLoad();
     refresh();
   }
@@ -296,6 +311,8 @@ export function connectFrameHost(): StudioHost {
     verbs = new Set();
     runReceiptSupport = false;
     downloadSupport = false;
+    previewSupport = false;
+    chatReferenceSupport = false;
     settleAllLost();
     if (generation) {
       settleGeneration({ status: "uncertain", requestId: generation.requestId, text: GEN_UNCERTAIN });
@@ -412,6 +429,7 @@ export function connectFrameHost(): StudioHost {
   port.addEventListener("close", () => closeWith("port_closed"));
   port.start();
   window.addEventListener("pagehide", () => closeWith("unloaded"));
+  window.addEventListener("focus", onFocus);
 
   window.parent.postMessage(
     { v: 1, op: "init", tag: boot.tag, bridge_nonce: boot.bridge_nonce, generation: boot.generation },
@@ -423,6 +441,7 @@ export function connectFrameHost(): StudioHost {
   async function submit(intent: StudioIntent): Promise<Receipt> {
     if (intent.kind === "generate") return submitGenerate(intent);
     if (intent.kind === "download") return submitDownload(intent);
+    if (intent.kind === "refine_in_chat") return submitRefine(intent);
     if (intent.kind !== "publish") {
       return { status: "refused", code: `${intent.kind}_not_available`, text: "Nothing was sent: reuse is not available yet." };
     }
@@ -445,6 +464,51 @@ export function connectFrameHost(): StudioHost {
       return { status: "refused", code: outcome.refusal.code, text: outcome.refusal.text };
     }
     return { status: "uncertain", requestId, text: UNCERTAIN_TEXT };
+  }
+
+  async function submitRefine(intent: Extract<StudioIntent, { kind: "refine_in_chat" }>): Promise<Receipt> {
+    if (Object.keys(intent).sort().join() !== "assetId,kind,revision" ||
+        !PUBLISH_ASSET_ID.test(intent.assetId) || !isCount(intent.revision, 1)) {
+      return { status: "refused", code: "bad_request", text: "Nothing was sent: this image reference is not valid." };
+    }
+    const current = derive();
+    const asset = current.status === "ready" ? current.assets.find((row) => row.id === intent.assetId) : null;
+    if (current.status !== "ready" || !current.capabilities.refineInChat || asset?.kind !== "image" || asset.revision !== intent.revision) {
+      return { status: "refused", code: "reference_unavailable", text: "This image cannot be attached. Check the current Library and host connection." };
+    }
+    const { assetId, revision } = intent;
+    const capturedScope = scope;
+    const outcome = await call("media.chat.attach", { asset_id: assetId, expected_revision: revision });
+    if (outcome.ok && scope === capturedScope && !closedReason) {
+      const reply = record(outcome.data);
+      if (reply && Object.keys(reply).sort().join() === "asset_id,revision" && reply.asset_id === assetId && reply.revision === revision) {
+        return { status: "chat_attached", assetId, revision };
+      }
+    }
+    if (!outcome.ok && "refusal" in outcome) {
+      return { status: "refused", code: outcome.refusal.code, text: outcome.refusal.text };
+    }
+    return { status: "uncertain", requestId: `chat-${randomHex(6)}`, text: "Could not confirm attachment. Check the chat composer before trying again." };
+  }
+
+  function preview(assetId: string, revision: number): Promise<string | null> {
+    const capturedScope = scope;
+    const result = previewTail.then(async () => {
+      const current = derive();
+      if (scope !== capturedScope || current.status !== "ready" || !current.capabilities.previews ||
+          !current.assets.some((asset) => asset.id === assetId && asset.revision === revision && asset.kind === "image")) return null;
+      const outcome = await call("media.read", { kind: "preview", asset_id: assetId, expected_revision: revision });
+      if (!outcome.ok || closedReason || scope !== capturedScope) return null;
+      const image = record(outcome.data);
+      if (!image || Object.keys(image).sort().join() !== "asset_id,base64,media_type,revision,sha256" ||
+          image.asset_id !== assetId || image.revision !== revision ||
+          (image.media_type !== "image/png" && image.media_type !== "image/jpeg") ||
+          typeof image.sha256 !== "string" || typeof image.base64 !== "string" || image.base64.length === 0 ||
+          image.base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.base64)) return null;
+      return `data:${image.media_type};base64,${image.base64}`;
+    });
+    previewTail = result.then(() => undefined, () => undefined);
+    return result;
   }
 
   /** The image-only run.start slot. Every value the wire carries is captured
@@ -554,6 +618,7 @@ export function connectFrameHost(): StudioHost {
       };
     },
     submit,
+    preview,
   };
 }
 
@@ -622,6 +687,8 @@ function parseAsset(value: unknown): StudioAsset | null {
     tags: [],
     createdAt: a.created * 1000,
     revision: a.revision,
+    ...(typeof a.prompt === "string" ? { prompt: a.prompt } : {}),
+    ...(Array.isArray(a.lineage) && a.lineage.every((id) => typeof id === "string" && PUBLISH_ASSET_ID.test(id)) ? { lineage: a.lineage as string[] } : {}),
   };
 }
 

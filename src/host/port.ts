@@ -2,12 +2,10 @@
  * APP-INTERNAL typed port between the Designer Studio frame and its host.
  *
  * This is the app's own seam, not a shipped SDK or a host contract. The
- * bootstrap in ./bootstrap.ts maps it onto the host's screen-media.v1 catalog
- * read and publish verbs, and only when the host advertises them for this
- * mount. DSN-1 adds the `run.start` slot verb for the image-only generation
- * bridge (offered only when the host advertises `run.start` AND stamps its
- * `run_receipts` marker on a v2 push). Reuse and original download are not
- * implemented.
+ * bootstrap in ./bootstrap.ts maps it onto the host's advertised
+ * screen-media.v1 verbs and native run/download slots. Image references
+ * are attached by the trusted host to its existing conversation; the
+ * frame never sends a message or approves a refinement.
  *
  * Authority rules the port carries (enforced by the host, never the frame):
  * - the workspace is the access boundary; scope, install and context come
@@ -82,9 +80,11 @@ export interface StudioCapabilities {
   publish: boolean;
   reuse: boolean;
   download: boolean;
+  refineInChat: boolean;
+  previews: boolean;
 }
 
-export const NO_CAPABILITIES: StudioCapabilities = { generate: false, publish: false, reuse: false, download: false };
+export const NO_CAPABILITIES: StudioCapabilities = { generate: false, publish: false, reuse: false, download: false, refineInChat: false, previews: false };
 
 export type StudioSnapshot =
   | { status: "unavailable"; reason: string }
@@ -112,6 +112,7 @@ export type StudioIntent =
     }
   | { kind: "publish"; assetId: string; revision: number; requestId: string }
   | { kind: "download"; assetId: string }
+  | { kind: "refine_in_chat"; assetId: string; revision: number }
   | { kind: "reuse"; assetId: string };
 
 export type Receipt =
@@ -125,6 +126,8 @@ export type Receipt =
   /** An original download slot completed. Carries no revision, receipt or
    *  save proof: the browser's download is the only evidence of a file. */
   | { status: "download_started" }
+  /** Only the host's completed composer handoff confirms attachment, not a sent message. */
+  | { status: "chat_attached"; assetId: string; revision: number }
   | { status: "uncertain"; requestId: string; text: string }
   | { status: "revision_conflict"; currentRevision: number }
   | { status: "refused"; code: string; text: string };
@@ -133,6 +136,8 @@ export interface StudioHost {
   snapshot(): StudioSnapshot;
   subscribe(listener: () => void): () => void;
   submit(intent: StudioIntent): Promise<Receipt>;
+  /** Authorized, bounded image bytes, encoded locally; never a provider URL. */
+  preview(assetId: string, revision: number): Promise<string | null>;
 }
 
 /** The only state this build can honestly show before a host adapter exists. */
@@ -141,6 +146,7 @@ export function unavailableHost(reason: string): StudioHost {
   return {
     snapshot: () => snapshot,
     subscribe: () => () => {},
+    preview: async () => null,
     submit: async (intent) => ({
       status: "refused",
       code: "studio_unavailable",

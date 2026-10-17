@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import type { StudioActor, StudioAsset } from "../../host/port";
+import type { StudioActor, StudioAsset, StudioHost } from "../../host/port";
 import { describeCreator, isMine, lifecycleLabel } from "./model";
 import type { LibraryKind, LibraryScope } from "./types";
+import { AssetPreview } from "./AssetPreview";
 
 interface Props {
   assets: StudioAsset[];
@@ -10,9 +11,12 @@ interface Props {
   onSelect: (id: string) => void;
   onCreate: () => void;
   createOpen: boolean;
+  host: StudioHost;
+  canRefine: boolean;
+  onChooseReference: () => void;
 }
 
-export function Library({ assets, actor, selectedId, onSelect, onCreate, createOpen }: Props) {
+export function Library({ assets, actor, selectedId, onSelect, onCreate, createOpen, host, canRefine, onChooseReference }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<LibraryScope>("workspace");
   const [kind, setKind] = useState<LibraryKind>("all");
@@ -32,7 +36,10 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
     <section aria-labelledby="ds-library-heading" className="ds-panel">
       <header className="ds-library-header">
         <h2 id="ds-library-heading">Library</h2>
-        <button type="button" className="btn btn-primary" onClick={onCreate} aria-expanded={createOpen}>New creation</button>
+        <div className="ds-actions">
+          <button type="button" className="btn btn-sm" disabled={!canRefine} title={canRefine ? undefined : "Image chat context is not available on this host."} onClick={onChooseReference}>Refine in chat</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onCreate} aria-expanded={createOpen}>New creation</button>
+        </div>
       </header>
       <div className="ds-row">
         <label className="ds-field">
@@ -63,6 +70,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
           {rows.map((a) => (
             <li key={a.id}>
               <button type="button" className="card tcard ds-tile" aria-pressed={a.id === selectedId} onClick={() => onSelect(a.id)}>
+                <AssetPreview asset={a} host={host} />
                 <span className="ds-kind">{a.kind}</span>
                 <span>{a.title}</span>
                 <span className="ds-meta">{describeCreator(a.creator)} · {lifecycleLabel(a)}</span>

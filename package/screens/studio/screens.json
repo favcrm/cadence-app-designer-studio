@@ -5,25 +5,26 @@
   "host_contract": "screen-media.v1",
   "may": [
     "media.read",
-    "media.publish"
+    "media.publish",
+    "media.chat.attach"
   ],
   "assets": [
     {
       "name": "client.js",
       "media_type": "text/javascript",
-      "sha256": "sha256:20dad08bfe453a6d79a513b26c8c9afbc782c95eb1b8feab21568bf1c5aee45e",
-      "size": 218615
+      "sha256": "sha256:6760c3fabf05db5051411a89bce1b46cc056e87d252c17ec718790208fadc2e8",
+      "size": 225398
     },
     {
       "name": "styles.css",
       "media_type": "text/css",
-      "sha256": "sha256:adde063a23d4a4effcde1c8ebef619c706d2def541512122f14611bcd01866ab",
-      "size": 3027
+      "sha256": "sha256:cdf2e5abfb2bdc9251fceb10eb633932d1805c6e5ddcc56faa2022ed8ea97672",
+      "size": 4277
     }
   ],
   "provenance": {
-    "source_digest": "sha256:5cbb9ccbf8e398efa0bf4523afd6491c82310cc53ca6808c68281f26786a22da",
-    "sdk_digest": "sha256:75c42ab0b076abb293299ec754ce58fa0b00852f1556e6839283c1516ef81e63",
+    "source_digest": "sha256:33d114ed9170eca7efc29623f8313b154fc8d977805655ae198d88d16f6bd174",
+    "sdk_digest": "sha256:da062540908c70749a44aafe770c12dd1aafb3a55adf788f7d02aa14c4e0d795",
     "toolchain_digest": "sha256:9a147dfb4024dab6e6af49661b29c78f679c6847bdd45c2da0f9bd806f4cd88f"
   }
 }

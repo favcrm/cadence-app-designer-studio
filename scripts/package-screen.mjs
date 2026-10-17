@@ -98,7 +98,7 @@ const declaration = {
   app: "designer-studio",
   entry: "client.js",
   host_contract: "screen-media.v1",
-  may: ["media.read", "media.publish"],
+  may: ["media.read", "media.publish", "media.chat.attach"],
   assets: [
     { name: "client.js", media_type: "text/javascript", sha256: sha(client), size: client.length },
     { name: "styles.css", media_type: "text/css", sha256: sha(css), size: css.length },
