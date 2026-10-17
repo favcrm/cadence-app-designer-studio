@@ -1,4 +1,4 @@
-import { IMAGE_ASPECTS, MAX_PROMPT, MAX_REFERENCES, TASK_STATUS, VIDEO_ASPECTS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, modelFor } from "./model";
+import { IMAGE_ASPECTS, MAX_PROMPT, TASK_STATUS, VIDEO_ASPECTS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, modelFor } from "./model";
 import type { Phase } from "./state";
 import type { CreateDraft } from "./types";
 import type { Task } from "../../host/port";
@@ -18,6 +18,8 @@ interface Props {
   busy: boolean;
   canSubmit: boolean;
   onRequest: () => void;
+  canRefine: boolean;
+  onChooseReference: () => void;
 }
 
 export function CreatePanel(props: Props) {
@@ -53,7 +55,7 @@ export function CreatePanel(props: Props) {
       </fieldset>
 
       <label className="ds-field">
-        <span>Prompt</span>
+        <span>Creative brief</span>
         <textarea className="field" value={draft.prompt} maxLength={MAX_PROMPT} rows={4} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} />
         <small>{draft.prompt.length}/{MAX_PROMPT}</small>
       </label>
@@ -82,7 +84,10 @@ export function CreatePanel(props: Props) {
         </div>
       )}
 
-      <p className="ds-hint">Reference images are not available for image generation here ({draft.references.length}/{MAX_REFERENCES}). Paths and links are never accepted.</p>
+      <div className="ds-reference-action">
+        <span className="ds-hint">Changing an existing image? Choose a visual reference and continue in chat.</span>
+        <button type="button" className="btn btn-sm" disabled={!props.canRefine} onClick={props.onChooseReference}>Choose reference</button>
+      </div>
 
       {problems.length > 0 && (
         <ul className="ds-problems">
@@ -92,10 +97,10 @@ export function CreatePanel(props: Props) {
 
       <Status phase={phase} />
 
-      <button type="button" className="btn btn-primary" disabled={!canSubmit || busy} onClick={props.onRequest}>
+      <button type="button" className="btn btn-primary btn-sm" disabled={!canSubmit || busy} onClick={props.onRequest}>
         {busy ? "Sending..." : "Request generation"}
       </button>
-      <p className="ds-hint">Cadence shows the price and asks for approval in the host confirmation below this screen. This screen cannot approve or charge.</p>
+      <p className="ds-hint">Review the model, inputs and price in Cadence before approving. Nothing runs without approval.</p>
     </section>
   );
 }

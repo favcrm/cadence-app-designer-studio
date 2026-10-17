@@ -5,7 +5,8 @@ import { CreatePanel } from "./CreatePanel";
 import { Library } from "./Library";
 import { describeCreator } from "./model";
 import { useStudio } from "./state";
-import type { CreateDraft } from "./types";
+import type { StudioAsset } from "../../host/port";
+import { ReferencePicker } from "./ReferencePicker";
 import "./studio.css";
 
 /** Designer Studio app surface. The host shell and chat stay outside this frame. */
@@ -13,6 +14,8 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const studio = useStudio(host);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [chatNotice, setChatNotice] = useState<string | null>(null);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
@@ -62,6 +65,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const selected = assets.find((a) => a.id === selectedId) ?? null;
   const canPublish = snapshot.status === "ready" && snapshot.capabilities.publish;
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
+  const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
 
   function openCreation() {
     setSelectedId(null);
@@ -73,9 +77,21 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     setSelectedId(id);
   }
 
-  function reuse(draft: CreateDraft) {
-    studio.setDraft(draft);
-    openCreation();
+  async function refine(asset: StudioAsset): Promise<string | null> {
+    if (!canRefine || asset.kind !== "image") return "Image chat context is not available on this host.";
+    const { id, revision } = asset;
+    try {
+      const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
+      if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
+        setChatNotice("Image attached in chat. Describe your changes and send when ready.");
+        return null;
+      }
+      if (receipt.status === "refused" || receipt.status === "uncertain") return receipt.text;
+      if (receipt.status === "revision_conflict") return "This image changed. Choose its current version before attaching.";
+    } catch {
+      // The handoff may have reached the host. Do not claim nothing happened.
+    }
+    return "Could not confirm attachment. Check the chat composer before trying again.";
   }
 
   return (
@@ -85,15 +101,11 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           {unavailableText}
         </p>
       )}
-      {snapshot.status === "ready" && (
-        <p className="ds-note" role="status">
-          The workspace catalog is connected. Image generation, library publishing and original download are offered only when this workspace's host confirms them. Reuse, edit, text-to-video and image-to-video are not available yet.
-        </p>
-      )}
+      {chatNotice && <p className="ds-note ds-ok" role="status">{chatNotice}</p>}
 
       <div className={`ds-library${createOpen || selected ? " ds-pane-present" : ""}`}>
         <div className="ds-canvas">
-          <Library assets={assets} actor={actor} selectedId={selectedId} onSelect={selectAsset} onCreate={openCreation} createOpen={createOpen} />
+          <Library assets={assets} actor={actor} selectedId={selectedId} onSelect={selectAsset} onCreate={openCreation} createOpen={createOpen} host={host} canRefine={canRefine} onChooseReference={() => setPickerOpen(true)} />
           {jobs.length > 0 && (
             <ul className="ds-jobs" aria-label="Jobs">
               {jobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {describeCreator(j.creator)}. {j.note}</li>)}
@@ -115,6 +127,8 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
                 busy={studio.busy}
                 canSubmit={studio.canSubmit}
                 onRequest={studio.requestGeneration}
+                canRefine={canRefine}
+                onChooseReference={() => setPickerOpen(true)}
               />
             </div>
             <div className="dfoot">
@@ -124,16 +138,22 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
         )}
         {selected && (
           <AssetDetail
+            key={`${selected.id}:${selected.revision}`}
             asset={selected}
             canPublish={canPublish}
             canDownload={canDownload}
             lineageJobs={jobs.filter((j) => j.assetId === selected.id)}
             host={host}
-            onReuse={reuse}
+            canRefine={canRefine}
+            sourceAssets={assets}
+            onRefine={refine}
             onClose={() => setSelectedId(null)}
           />
         )}
       </div>
+      {pickerOpen && snapshot.status === "ready" && (
+        <ReferencePicker assets={assets} host={host} onChoose={refine} onClose={() => setPickerOpen(false)} />
+      )}
     </main>
   );
 }

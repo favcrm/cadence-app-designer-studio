@@ -89,6 +89,7 @@ function fromReceipt(receipt: Receipt): Phase {
     case "confirmed":
       return { kind: "saved" };
     case "download_started":
+    case "chat_attached":
       return { kind: "refused", text: "This response does not confirm image generation." };
     case "generation_result":
       if (receipt.state === "succeeded") return { kind: "completed" };

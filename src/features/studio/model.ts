@@ -113,8 +113,3 @@ export function lifecycleLabel(asset: StudioAsset): string {
   return asset.lifecycle === "published" ? "In workspace library" : "Draft";
 }
 
-/** A reuse starts a new draft from the authorized asset ID; it never copies a path or URL. */
-export function reuseDraft(asset: StudioAsset): CreateDraft {
-  const task: Task = asset.kind === "video" ? "text_to_video" : "edit";
-  return { ...emptyDraft(task), references: [asset.id] };
-}
