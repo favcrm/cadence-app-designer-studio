@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { StudioHost } from "../../host/port";
 import { AssetDetail } from "./AssetDetail";
 import { CreatePanel } from "./CreatePanel";
@@ -67,6 +67,10 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
 
+  useEffect(() => {
+    if (snapshot.status !== "ready") setChatNotice(null);
+  }, [snapshot.status]);
+
   function openCreation() {
     setSelectedId(null);
     setCreateOpen(true);
@@ -79,6 +83,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
 
   async function refine(asset: StudioAsset): Promise<string | null> {
     if (!canRefine || asset.kind !== "image") return "Image chat context is not available on this host.";
+    setChatNotice(null);
     const { id, revision } = asset;
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });

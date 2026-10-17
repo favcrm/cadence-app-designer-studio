@@ -10,7 +10,7 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ id: string; revision: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
@@ -19,7 +19,9 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
   }, []);
   const images = assets.filter((asset) => asset.kind === "image");
   const rows = images.filter((asset) => asset.title.toLowerCase().includes(query.trim().toLowerCase()));
-  const choice = rows.find((asset) => asset.id === selected);
+  const row = rows.find((asset) => asset.id === selected?.id) ?? null;
+  const stale = row !== null && selected !== null && row.revision !== selected.revision;
+  const choice = stale ? null : row;
 
   async function choose() {
     if (!choice || busy) return;
@@ -51,7 +53,7 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
       <ul className="ds-grid ds-picker-grid" aria-label="Reference images">
         {rows.map((asset) => (
           <li key={asset.id}>
-            <button type="button" className="card tcard ds-tile" aria-pressed={selected === asset.id} disabled={busy} onClick={() => setSelected(asset.id)}>
+            <button type="button" className="card tcard ds-tile" aria-pressed={selected?.id === asset.id && selected.revision === asset.revision} disabled={busy} onClick={() => setSelected({ id: asset.id, revision: asset.revision })}>
               <AssetPreview asset={asset} host={host} />
               <span>{asset.title}</span>
             </button>
@@ -60,8 +62,9 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
       </ul>
       {rows.length === 0 && <p className="ds-hint">{images.length === 0 ? "No retained images to use yet." : "No images match this search."}</p>}
       {note && <p className="ds-note ds-warn" role="alert">{note}</p>}
+      {stale && <p className="ds-note ds-warn" role="alert">This image changed. Select it again before attaching.</p>}
       <footer className="ds-picker-footer">
-        <span className="ds-hint">{choice ? choice.title : "Select one image"}</span>
+        <span className="ds-hint">{choice ? choice.title : stale ? "Select the current image" : "Select one image"}</span>
         <button type="button" className="btn btn-primary btn-sm" disabled={!choice || busy} onClick={() => void choose()}>{busy ? "Attaching…" : "Use in chat"}</button>
       </footer>
     </dialog>
