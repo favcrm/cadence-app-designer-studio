@@ -19,43 +19,40 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
-  let unavailableText = "Designer Studio could not confirm its connection or workspace catalog. Select an active app context in Cadence and reopen this screen; if this continues, ask an operator to investigate setup.";
+  let unavailableText = "Designer Studio could not confirm its connection to Cadence. Reopen this screen; if this continues, ask an operator to check the host connection.";
   switch (reason) {
     case "awaiting_host":
-      unavailableText = "Waiting for Cadence to connect this screen to the active app context.";
+      unavailableText = "Waiting for Cadence to connect this screen… Reopen Designer Studio if this continues; ask an operator to check the host connection.";
       break;
     case "catalog_loading":
       unavailableText = "Loading the workspace catalog from Cadence.";
       break;
-    case "active_context_required":
-      unavailableText = "Select an active Designer Studio context in Cadence, then reopen this screen to load the workspace catalog. This screen cannot create or approve a context.";
-      break;
     case "media_read_not_advertised":
-      unavailableText = "Cadence has not enabled workspace catalog access for this screen. Ask an operator to check the active app context and host setup.";
+      unavailableText = "Cadence has not confirmed workspace catalog access for this screen. Ask an operator to check the host capability setup.";
       break;
     case "unsupported_host":
-      unavailableText = "This screen needs a compatible Cadence host. Reopen Designer Studio from an active app context; if this continues, ask an operator to check the host version and setup.";
+      unavailableText = "This screen needs a newer Cadence host. Ask an operator to check the host version and app compatibility.";
       break;
     case "invalid_reply":
     case "lost_invalid_reply":
     case "repeated_cursor":
     case "malformed_push":
-      unavailableText = "Designer Studio received an invalid catalog or connection response from Cadence. Reopen this screen; if this continues, ask an operator to check host/app version compatibility and connection setup.";
+      unavailableText = "Designer Studio received an invalid catalog or connection response from Cadence. Reopen this screen; if this continues, ask an operator to check host and app version compatibility.";
       break;
     case "scope_changed":
-      unavailableText = "The app context changed. Select the intended active app context in Cadence and reopen Designer Studio.";
+      unavailableText = "The Cadence installation or app version changed. Reopen Designer Studio.";
       break;
     case "closed":
     case "port_closed":
     case "port_error":
     case "unloaded":
-      unavailableText = "The connection to Cadence closed or could not be read. Reopen Designer Studio in the active app context.";
+      unavailableText = "The connection to Cadence closed or could not be read. Reopen Designer Studio.";
       break;
     default:
       if (reason?.startsWith("refused_")) {
-        unavailableText = "Cadence refused the workspace catalog read. Select an active app context and reopen Designer Studio; if this continues, ask an operator to investigate context access and setup.";
+        unavailableText = "Cadence refused the connection or workspace catalog read. Ask an operator to check host setup; if this continues, check that the host is reachable and compatible.";
       } else if (reason?.startsWith("lost_")) {
-        unavailableText = "The workspace catalog read could not be confirmed. Reopen Designer Studio in the active app context; if this continues, ask an operator to investigate the connection and setup.";
+        unavailableText = "The workspace catalog read could not be confirmed. Reopen Designer Studio; if this continues, ask an operator to investigate the connection.";
       }
   }
 
@@ -82,7 +79,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   }
 
   async function refine(asset: StudioAsset): Promise<string | null> {
-    if (!canRefine || asset.kind !== "image") return "Image chat context is not available on this host.";
+    if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
     setChatNotice(null);
     const { id, revision } = asset;
     try {

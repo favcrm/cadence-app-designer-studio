@@ -37,7 +37,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
       <header className="ds-library-header">
         <h2 id="ds-library-heading">Library</h2>
         <div className="ds-actions">
-          <button type="button" className="btn btn-sm" disabled={!canRefine} title={canRefine ? undefined : "Image chat context is not available on this host."} onClick={onChooseReference}>Refine in chat</button>
+          <button type="button" className="btn btn-sm" disabled={!canRefine} title={canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={onChooseReference}>Refine in chat</button>
           <button type="button" className="btn btn-primary btn-sm" onClick={onCreate} aria-expanded={createOpen}>New creation</button>
         </div>
       </header>

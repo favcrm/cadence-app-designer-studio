@@ -610,6 +610,22 @@ async function main() {
     } finally { await u.cleanup(); }
   }
 
+  /* ------------- C: context dimension is optional; malformed refused --- */
+  for (const [name, cfg, expectOk] of [
+    ['C1 real context id tolerated (today)', { screen: { context_id: 'ctx-1' } }, true],
+    ['C2 context_id empty string, contexts [] renders', { screen: { context_id: '', contexts: [] } }, true],
+    ['C3 context fields absent renders', { omit: ['context_id', 'contexts', 'defaults'] }, true],
+    ['C4 malformed non-string context_id refused', { screen: { context_id: 42 } }, false],
+  ]) {
+    const c = makeFixture(cfg);
+    try {
+      await c.connect();
+      await waitFor(() => c.mediaReadCount() >= 1, 200);
+      const reads = c.mediaReadCount();
+      check(name, expectOk ? reads >= 1 : reads === 0, `mediaReads=${reads}`);
+    } finally { await c.cleanup(); }
+  }
+
   /* ----------------- V: intent refused BEFORE any slot op ---------------- */
   if (intent) {
     const cases = [

@@ -273,15 +273,17 @@ export function connectFrameHost(): StudioHost {
   }
 
   function onPush(data: Record<string, unknown>): void {
-    if (data.tag !== bootTag || typeof data.install_id !== "string" || typeof data.digest !== "string" || typeof data.context_id !== "string") {
+    // Context is no longer a scope dimension. Absent or "" means unscoped; a real
+    // id from a host that still sends one is tolerated. Any other type is malformed.
+    if (data.context_id !== undefined && typeof data.context_id !== "string") {
       closeWith("malformed_push");
       return;
     }
-    if (data.context_id.length === 0) {
-      closeWith("active_context_required");
+    if (data.tag !== bootTag || typeof data.install_id !== "string" || typeof data.digest !== "string") {
+      closeWith("malformed_push");
       return;
     }
-    const key = JSON.stringify([data.install_id, data.digest, data.context_id, data.tag]);
+    const key = JSON.stringify([data.install_id, data.digest, data.tag]);
     if (scope !== null && key !== scope) {
       closeWith("scope_changed");
       return;

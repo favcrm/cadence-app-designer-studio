@@ -110,7 +110,7 @@ export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceA
         {note && <p className="ds-note" role="status">{note}</p>}
       </div>
       <div className="dfoot">
-        <button type="button" className="btn btn-primary btn-sm" disabled={!canRefine || attaching || asset.kind !== "image"} title={canRefine ? undefined : "Image chat context is not available on this host."} onClick={() => void refine()}>{attaching ? "Attaching…" : "Refine in chat"}</button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!canRefine || attaching || asset.kind !== "image"} title={canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={() => void refine()}>{attaching ? "Attaching…" : "Refine in chat"}</button>
         <button type="button" className="btn btn-sm" disabled={!canDownload || downloading} title={canDownload ? undefined : unavailable} onClick={download}>Download original</button>
         {!published && (
           <button type="button" className="btn btn-sm" disabled={!canPublish} title={canPublish ? undefined : "Publishing is not available in this workspace."} onClick={publish}>
