@@ -22,7 +22,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   let unavailableText = "Designer Studio could not confirm its connection to Cadence. Reopen this screen; if this continues, ask an operator to check the host connection.";
   switch (reason) {
     case "awaiting_host":
-      unavailableText = "Cadence is unreachable: no connection has been received for this screen yet. Reopen Designer Studio; if this continues, ask an operator to check the host connection.";
+      unavailableText = "Waiting for Cadence to connect this screen… Reopen Designer Studio if this continues; ask an operator to check the host connection.";
       break;
     case "catalog_loading":
       unavailableText = "Loading the workspace catalog from Cadence.";
