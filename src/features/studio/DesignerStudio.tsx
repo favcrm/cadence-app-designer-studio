@@ -15,7 +15,10 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [chatNotice, setChatNotice] = useState<string | null>(null);
+  // Success is bound to the exact asset revision that the host attached. A
+  // later attempt, capability loss or different catalog must not leave the
+  // previous success banner standing.
+  const [chatNotice, setChatNotice] = useState<{ text: string; assetId: string; revision: number } | null>(null);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
@@ -63,10 +66,14 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const canPublish = snapshot.status === "ready" && snapshot.capabilities.publish;
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
+  const notice = chatNotice && canRefine &&
+    assets.some((a) => a.id === chatNotice.assetId && a.revision === chatNotice.revision)
+    ? chatNotice.text
+    : null;
 
   useEffect(() => {
-    if (snapshot.status !== "ready") setChatNotice(null);
-  }, [snapshot.status]);
+    if (notice === null) setChatNotice(null);
+  }, [notice]);
 
   function openCreation() {
     setSelectedId(null);
@@ -79,13 +86,13 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   }
 
   async function refine(asset: StudioAsset): Promise<string | null> {
-    if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
     setChatNotice(null);
+    if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
     const { id, revision } = asset;
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
-        setChatNotice("Image attached in chat. Describe your changes and send when ready.");
+        setChatNotice({ text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
         return null;
       }
       if (receipt.status === "refused" || receipt.status === "uncertain") return receipt.text;
@@ -103,7 +110,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           {unavailableText}
         </p>
       )}
-      {chatNotice && <p className="ds-note ds-ok" role="status">{chatNotice}</p>}
+      {notice && <p className="ds-note ds-ok" role="status">{notice}</p>}
 
       <div className={`ds-library${createOpen || selected ? " ds-pane-present" : ""}`}>
         <div className="ds-canvas">
