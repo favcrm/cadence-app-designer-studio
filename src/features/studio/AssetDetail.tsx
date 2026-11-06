@@ -78,13 +78,8 @@ export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceA
   async function refine() {
     if (!canRefine || attaching || asset.kind !== "image") return;
     setAttaching(true);
-    const error = await onRefine(asset);
-    if (alive.current) {
-      setAttaching(false);
-      // Success is shown once by the parent notice, which is bound to the
-      // exact attached revision and cleared on the next attempt.
-      setNote(error);
-    }
+    await onRefine(asset);
+    if (alive.current) setAttaching(false);
   }
 
   return (

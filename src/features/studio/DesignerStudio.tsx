@@ -15,10 +15,11 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Success is bound to the exact asset revision that the host attached. A
-  // later attempt, capability loss or different catalog must not leave the
-  // previous success banner standing.
-  const [chatNotice, setChatNotice] = useState<{ text: string; assetId: string; revision: number } | null>(null);
+  // Attachment feedback is attempt-scoped and bound to the exact asset
+  // revision the host reported. A later attempt, capability loss or a catalog
+  // change must not leave the previous success or refusal standing.
+  type AttachmentFeedback = { kind: "success" | "error"; text: string; assetId: string; revision: number };
+  const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const refineAttempt = useRef(0);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
@@ -67,21 +68,22 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const canPublish = snapshot.status === "ready" && snapshot.capabilities.publish;
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
-  const notice = chatNotice && canRefine &&
-    assets.some((a) => a.id === chatNotice.assetId && a.revision === chatNotice.revision)
-    ? chatNotice.text
-    : null;
-
+  // Clear stored feedback, not just the derived display, when its asset leaves
+  // the current catalog. Otherwise a late success could reappear after the
+  // same id/revision returns.
   useEffect(() => {
-    if (notice === null) setChatNotice(null);
-  }, [notice]);
+    if (!attachmentFeedback) return;
+    if (!canRefine || !assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision)) {
+      setAttachmentFeedback(null);
+    }
+  }, [attachmentFeedback, assets, canRefine]);
 
   // A capability loss invalidates every in-flight handoff, including one whose
   // success arrives while the affordance is hidden.
   useEffect(() => {
     if (canRefine) return;
     refineAttempt.current += 1;
-    setChatNotice(null);
+    setAttachmentFeedback(null);
   }, [canRefine]);
 
   function openCreation() {
@@ -97,22 +99,26 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   async function refine(asset: StudioAsset): Promise<string | null> {
     const attempt = ++refineAttempt.current;
     const current = () => refineAttempt.current === attempt;
-    setChatNotice(null);
-    if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
+    setAttachmentFeedback(null);
+    const fail = (text: string) => {
+      if (current()) setAttachmentFeedback({ kind: "error", text, assetId: asset.id, revision: asset.revision });
+      return text;
+    };
+    if (!canRefine || asset.kind !== "image") return fail("Refine in chat is not available: Cadence has not confirmed image chat on this host.");
     const { id, revision } = asset;
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
       if (!current()) return null;
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
-        setChatNotice({ text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
+        setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
         return null;
       }
-      if (receipt.status === "refused" || receipt.status === "uncertain") return receipt.text;
-      if (receipt.status === "revision_conflict") return "This image changed. Choose its current version before attaching.";
+      if (receipt.status === "refused" || receipt.status === "uncertain") return fail(receipt.text);
+      if (receipt.status === "revision_conflict") return fail("This image changed. Choose its current version before attaching.");
     } catch {
       // The handoff may have reached the host. Do not claim nothing happened.
     }
-    return current() ? "Could not confirm attachment. Check the chat composer before trying again." : null;
+    return current() ? fail("Could not confirm attachment. Check the chat composer before trying again.") : null;
   }
 
   return (
@@ -122,7 +128,11 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           {unavailableText}
         </p>
       )}
-      {notice && <p className="ds-note ds-ok" role="status">{notice}</p>}
+      {attachmentFeedback && canRefine && (
+        <p className={attachmentFeedback.kind === "success" ? "ds-note ds-ok" : "ds-note ds-warn"} role={attachmentFeedback.kind === "success" ? "status" : "alert"}>
+          {attachmentFeedback.text}
+        </p>
+      )}
 
       <div className={`ds-library${createOpen || selected ? " ds-pane-present" : ""}`}>
         <div className="ds-canvas">
