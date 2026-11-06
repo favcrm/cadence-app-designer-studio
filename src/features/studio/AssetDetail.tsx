@@ -14,7 +14,7 @@ interface Props {
   host: StudioHost;
   canRefine: boolean;
   sourceAssets: StudioAsset[];
-  onRefine: (asset: StudioAsset) => Promise<string | null>;
+  onRefine: (asset: StudioAsset) => Promise<string | null | undefined>;
   onClose: () => void;
 }
 

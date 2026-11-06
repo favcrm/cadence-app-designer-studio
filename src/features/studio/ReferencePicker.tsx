@@ -5,7 +5,7 @@ import { AssetPreview } from "./AssetPreview";
 export function ReferencePicker({ assets, host, onChoose, onClose }: {
   assets: StudioAsset[];
   host: StudioHost;
-  onChoose: (asset: StudioAsset) => Promise<string | null>;
+  onChoose: (asset: StudioAsset) => Promise<string | null | undefined>;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -26,7 +26,6 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
   useEffect(() => {
     if (row && !stale) return;
     setNote(null);
-    setBusy(false);
   }, [row?.id, row?.revision, stale]);
 
   async function choose() {
@@ -37,6 +36,10 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
     const error = await onChoose(choice);
     // A closed picker cannot mutate or dismiss a later instance.
     if (dialog.current !== owner || !owner?.open) return;
+    if (error === undefined) {
+      setBusy(false);
+      return;
+    }
     if (error) {
       setNote(error);
       setBusy(false);
@@ -59,7 +62,7 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
       <ul className="ds-grid ds-picker-grid" aria-label="Reference images">
         {rows.map((asset) => (
           <li key={asset.id}>
-            <button type="button" className="card tcard ds-tile" aria-pressed={selected?.id === asset.id && selected.revision === asset.revision} disabled={busy} onClick={() => setSelected({ id: asset.id, revision: asset.revision })}>
+            <button type="button" className="card tcard ds-tile" aria-pressed={selected?.id === asset.id && selected.revision === asset.revision} disabled={busy} onClick={() => { setNote(null); setSelected({ id: asset.id, revision: asset.revision }); }}>
               <AssetPreview asset={asset} host={host} />
               <span>{asset.title}</span>
             </button>

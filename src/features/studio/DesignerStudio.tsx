@@ -107,7 +107,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     setSelectedId(id);
   }
 
-  async function refine(asset: StudioAsset): Promise<string | null> {
+  async function refine(asset: StudioAsset): Promise<string | null | undefined> {
     const attempt = ++refineAttempt.current;
     const current = () => refineAttempt.current === attempt;
     setAttachmentFeedback(null);
@@ -121,7 +121,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     const settle = () => { if (pendingAttempt.current?.attempt === attempt) pendingAttempt.current = null; };
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
-      if (!current()) return null;
+      if (!current()) return undefined;
       settle();
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
         setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
@@ -133,7 +133,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
       // The handoff may have reached the host. Do not claim nothing happened.
     }
     settle();
-    return current() ? fail("Could not confirm attachment. Check the chat composer before trying again.") : null;
+    return current() ? fail("Could not confirm attachment. Check the chat composer before trying again.") : undefined;
   }
 
   return (
