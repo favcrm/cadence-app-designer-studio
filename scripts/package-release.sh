@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT=${1:-"$ROOT/dist/release"}
-KIT=designer-studio-v0.1.1-preview.1
+KIT=designer-studio-v0.1.1-preview.2
 mkdir -p "$OUT"
 STAGE=$(mktemp -d)
 trap 'rm -rf -- "$STAGE"' EXIT
