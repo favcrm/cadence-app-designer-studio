@@ -113,3 +113,15 @@ export function lifecycleLabel(asset: StudioAsset): string {
   return asset.lifecycle === "published" ? "In workspace library" : "Draft";
 }
 
+
+/** Short, stable relative age for library metadata. `createdAt` is epoch ms. */
+export function formatRelative(epoch: number, now = Date.now()): string {
+  if (!Number.isFinite(epoch) || epoch <= 0) return "Unknown";
+  const seconds = Math.max(0, Math.floor((now - epoch) / 1000));
+  if (seconds < 60) return "Just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 172800) return "Yesterday";
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(epoch);
+}

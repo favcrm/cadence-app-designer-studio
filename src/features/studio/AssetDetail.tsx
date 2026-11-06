@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Receipt, StudioAsset, StudioHost, StudioJob } from "../../host/port";
-import { describeCreator, lifecycleLabel } from "./model";
+import { describeCreator, formatRelative, lifecycleLabel } from "./model";
 import { AssetPreview } from "./AssetPreview";
 import { newRequestId } from "./state";
 
@@ -90,7 +90,12 @@ export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceA
       </header>
       <div className="dbody ds-drawer-body">
         <AssetPreview asset={asset} host={host} />
-        <p className="ds-meta">{asset.kind} · {describeCreator(asset.creator)} · {lifecycleLabel(asset)} · revision {asset.revision}</p>
+        <p className="ds-meta">{asset.kind} · {describeCreator(asset.creator)} · {lifecycleLabel(asset)} · revision {asset.revision} · {formatRelative(asset.createdAt)}</p>
+        {asset.tags.length > 0 && (
+          <div className="ds-detail-tags" aria-label="Tags">
+            {asset.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
+          </div>
+        )}
         {asset.prompt && <p className="ds-prompt">{asset.prompt}</p>}
         {asset.lineage && asset.lineage.length > 0 && (
           <div className="ds-lineage">
