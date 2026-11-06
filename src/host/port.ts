@@ -93,6 +93,8 @@ export type StudioSnapshot =
       capabilities: StudioCapabilities;
       /** Null when the host cannot identify the current actor; "Mine" is then unavailable. */
       currentActor: StudioActor | null;
+      /** Host conversation context, or "" when the host supplies none. Display-only. */
+      conversationContext: string;
       assets: StudioAsset[];
       jobs: StudioJob[];
     };

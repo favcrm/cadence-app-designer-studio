@@ -141,6 +141,7 @@ export function connectFrameHost(): StudioHost {
   let dlSeq = 0;
   let previewSupport = false;
   let chatReferenceSupport = false;
+  let conversationContext = "";
   // Thumbnails, the picker and the detail drawer share the bounded call queue.
   // Serialize preview reads so a large Library cannot overflow the host's eight calls.
   let previewTail: Promise<void> = Promise.resolve();
@@ -162,6 +163,7 @@ export function connectFrameHost(): StudioHost {
         previews: previewSupport,
       },
       currentActor: catalog.actor,
+      conversationContext,
       assets: catalog.assets,
       jobs: [],
     };
@@ -299,6 +301,7 @@ export function connectFrameHost(): StudioHost {
     downloadSupport = data.v === 2 && data.original_downloads === 1;
     previewSupport = data.v === 2 && data.media_previews === 1;
     chatReferenceSupport = data.v === 2 && data.media_chat_references === 1;
+    conversationContext = typeof data.context_id === "string" ? data.context_id : "";
     if (verbs.has("media.read") && !loadInFlight && catalog.kind !== "ready") startLoad();
     refresh();
   }
@@ -315,6 +318,7 @@ export function connectFrameHost(): StudioHost {
     downloadSupport = false;
     previewSupport = false;
     chatReferenceSupport = false;
+    conversationContext = "";
     settleAllLost();
     if (generation) {
       settleGeneration({ status: "uncertain", requestId: generation.requestId, text: GEN_UNCERTAIN });

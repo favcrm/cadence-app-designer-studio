@@ -18,10 +18,10 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   // Attachment feedback is attempt-scoped and bound to the exact asset
   // revision the host reported. A later attempt, capability loss or a catalog
   // change must not leave the previous success or refusal standing.
-  type AttachmentFeedback = { kind: "success" | "error"; text: string; assetId: string; revision: number };
+  type AttachmentFeedback = { kind: "success" | "error"; text: string; assetId: string; revision: number; contextKey: string };
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const refineAttempt = useRef(0);
-  const pendingAttempt = useRef<{ attempt: number; assetId: string; revision: number } | null>(null);
+  const pendingAttempt = useRef<{ attempt: number; assetId: string; revision: number; contextKey: string } | null>(null);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
@@ -69,15 +69,17 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const canPublish = snapshot.status === "ready" && snapshot.capabilities.publish;
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
+  const contextKey = snapshot.status === "ready" ? snapshot.conversationContext : "";
   // Clear stored feedback, not just the derived display, when its asset leaves
   // the current catalog. Otherwise a late success could reappear after the
   // same id/revision returns.
   useEffect(() => {
     if (!attachmentFeedback) return;
-    if (!canRefine || !assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision)) {
+    if (!canRefine || attachmentFeedback.contextKey !== contextKey ||
+        !assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision)) {
       setAttachmentFeedback(null);
     }
-  }, [attachmentFeedback, assets, canRefine]);
+  }, [attachmentFeedback, assets, canRefine, contextKey]);
 
   // A pending attempt ends when its exact catalog entry disappears, even if a
   // later refresh restores the same id/revision. A capability loss invalidates
@@ -85,7 +87,8 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   // affordance is hidden.
   useEffect(() => {
     const pending = pendingAttempt.current;
-    if (pending && !assets.some((a) => a.id === pending.assetId && a.revision === pending.revision)) {
+    if (pending && (pending.contextKey !== contextKey ||
+        !assets.some((a) => a.id === pending.assetId && a.revision === pending.revision))) {
       pendingAttempt.current = null;
       refineAttempt.current += 1;
       setAttachmentFeedback(null);
@@ -95,7 +98,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
       refineAttempt.current += 1;
       setAttachmentFeedback(null);
     }
-  }, [assets, canRefine]);
+  }, [assets, canRefine, contextKey]);
 
   function openCreation() {
     setSelectedId(null);
@@ -110,21 +113,22 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   async function refine(asset: StudioAsset): Promise<string | null | undefined> {
     const attempt = ++refineAttempt.current;
     const current = () => refineAttempt.current === attempt;
+    const attemptContext = contextKey;
     setAttachmentFeedback(null);
     const fail = (text: string) => {
-      if (current()) setAttachmentFeedback({ kind: "error", text, assetId: asset.id, revision: asset.revision });
+      if (current()) setAttachmentFeedback({ kind: "error", text, assetId: asset.id, revision: asset.revision, contextKey: attemptContext });
       return text;
     };
     if (!canRefine || asset.kind !== "image") return fail("Refine in chat is not available: Cadence has not confirmed image chat on this host.");
     const { id, revision } = asset;
-    pendingAttempt.current = { attempt, assetId: id, revision };
+    pendingAttempt.current = { attempt, assetId: id, revision, contextKey: attemptContext };
     const settle = () => { if (pendingAttempt.current?.attempt === attempt) pendingAttempt.current = null; };
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
       if (!current()) return undefined;
       settle();
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
-        setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
+        setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision, contextKey: attemptContext });
         return null;
       }
       if (receipt.status === "refused" || receipt.status === "uncertain") return fail(receipt.text);
@@ -143,7 +147,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           {unavailableText}
         </p>
       )}
-      {attachmentFeedback && canRefine &&
+      {attachmentFeedback && canRefine && attachmentFeedback.contextKey === contextKey &&
         assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision) && (
         <p className={attachmentFeedback.kind === "success" ? "ds-note ds-ok" : "ds-note ds-warn"} role={attachmentFeedback.kind === "success" ? "status" : "alert"}>
           {attachmentFeedback.text}
