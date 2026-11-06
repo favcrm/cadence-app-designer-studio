@@ -1,7 +1,7 @@
 ---
 app: designer-studio
 title: Designer Studio
-version: '0.1.0'
+version: '0.1.1'
 summary: Create an image or refine an authorized Library image in chat, with native model and price review before any generation.
 needs:
   connections: []
