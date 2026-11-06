@@ -23,6 +23,12 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
   const stale = row !== null && selected !== null && row.revision !== selected.revision;
   const choice = stale ? null : row;
 
+  useEffect(() => {
+    if (row && !stale) return;
+    setNote(null);
+    setBusy(false);
+  }, [row?.id, row?.revision, stale]);
+
   async function choose() {
     if (!choice || busy) return;
     const owner = dialog.current;

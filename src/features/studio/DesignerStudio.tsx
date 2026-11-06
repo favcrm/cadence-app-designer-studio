@@ -21,6 +21,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   type AttachmentFeedback = { kind: "success" | "error"; text: string; assetId: string; revision: number };
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const refineAttempt = useRef(0);
+  const pendingAttempt = useRef<{ attempt: number; assetId: string; revision: number } | null>(null);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
@@ -78,13 +79,23 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     }
   }, [attachmentFeedback, assets, canRefine]);
 
-  // A capability loss invalidates every in-flight handoff, including one whose
-  // success arrives while the affordance is hidden.
+  // A pending attempt ends when its exact catalog entry disappears, even if a
+  // later refresh restores the same id/revision. A capability loss invalidates
+  // every in-flight handoff, including one whose success arrives while the
+  // affordance is hidden.
   useEffect(() => {
-    if (canRefine) return;
-    refineAttempt.current += 1;
-    setAttachmentFeedback(null);
-  }, [canRefine]);
+    const pending = pendingAttempt.current;
+    if (pending && !assets.some((a) => a.id === pending.assetId && a.revision === pending.revision)) {
+      pendingAttempt.current = null;
+      refineAttempt.current += 1;
+      setAttachmentFeedback(null);
+    }
+    if (!canRefine) {
+      pendingAttempt.current = null;
+      refineAttempt.current += 1;
+      setAttachmentFeedback(null);
+    }
+  }, [assets, canRefine]);
 
   function openCreation() {
     setSelectedId(null);
@@ -106,9 +117,12 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     };
     if (!canRefine || asset.kind !== "image") return fail("Refine in chat is not available: Cadence has not confirmed image chat on this host.");
     const { id, revision } = asset;
+    pendingAttempt.current = { attempt, assetId: id, revision };
+    const settle = () => { if (pendingAttempt.current?.attempt === attempt) pendingAttempt.current = null; };
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
       if (!current()) return null;
+      settle();
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
         setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
         return null;
@@ -118,6 +132,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     } catch {
       // The handoff may have reached the host. Do not claim nothing happened.
     }
+    settle();
     return current() ? fail("Could not confirm attachment. Check the chat composer before trying again.") : null;
   }
 
@@ -128,7 +143,8 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           {unavailableText}
         </p>
       )}
-      {attachmentFeedback && canRefine && (
+      {attachmentFeedback && canRefine &&
+        assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision) && (
         <p className={attachmentFeedback.kind === "success" ? "ds-note ds-ok" : "ds-note ds-warn"} role={attachmentFeedback.kind === "success" ? "status" : "alert"}>
           {attachmentFeedback.text}
         </p>
@@ -182,7 +198,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           />
         )}
       </div>
-      {pickerOpen && snapshot.status === "ready" && (
+      {pickerOpen && snapshot.status === "ready" && canRefine && (
         <ReferencePicker assets={assets} host={host} onChoose={refine} onClose={() => setPickerOpen(false)} />
       )}
     </main>
