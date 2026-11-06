@@ -138,7 +138,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
 
       <div className="ds-gallery-head">
         <p aria-live="polite">{rows.length} of {assets.length} assets</p>
-        <p>Select an asset to inspect</p>
+        {selectedId === null && rows.length > 0 && <p>Select an asset to inspect</p>}
       </div>
 
       {rows.length === 0 ? (
