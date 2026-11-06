@@ -12,18 +12,18 @@
     {
       "name": "client.js",
       "media_type": "text/javascript",
-      "sha256": "sha256:be04af9b524bc3fd90bb62a9dc8e77600ea971cbbc17fba174cb564212c881a4",
-      "size": 226037
+      "sha256": "sha256:f765500d9e28a4f794233552cafda21f0f30475f138d2a16d7f0fa8ca593c82b",
+      "size": 229863
     },
     {
       "name": "styles.css",
       "media_type": "text/css",
-      "sha256": "sha256:cdf2e5abfb2bdc9251fceb10eb633932d1805c6e5ddcc56faa2022ed8ea97672",
-      "size": 4277
+      "sha256": "sha256:c47596b7ffbca9966049c6db95237ceeb49e06ad7de9d750b48f35ae2576a20a",
+      "size": 10696
     }
   ],
   "provenance": {
-    "source_digest": "sha256:93cae40f9b696daa53f56c03c99f787b8177916e991670798fa2f351bc965133",
+    "source_digest": "sha256:658d5f78c4165f0ac486cf331cda7cd3e27e7a01bbd97d8c46f04c9efc22003c",
     "sdk_digest": "sha256:74e60b8fa76ce59faa2f38ff6bcc23a592864002c6fd33d16f0bce4978216d2e",
     "toolchain_digest": "sha256:9a147dfb4024dab6e6af49661b29c78f679c6847bdd45c2da0f9bd806f4cd88f"
   }

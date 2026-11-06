@@ -22,5 +22,5 @@ export interface CreateDraft {
 
 /** Workspace: every asset the viewer is authorized to see. Library: the
  *  published, curated subset. Mine: a creator filter over the same set. */
-export type LibraryScope = "workspace" | "library" | "mine";
+export type LibraryScope = "all" | "library" | "mine" | "drafts";
 export type LibraryKind = "all" | "image" | "video";
