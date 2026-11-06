@@ -203,7 +203,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
         )}
       </div>
       {pickerOpen && snapshot.status === "ready" && canRefine && (
-        <ReferencePicker assets={assets} host={host} onChoose={refine} onClose={() => setPickerOpen(false)} />
+        <ReferencePicker key={contextKey} assets={assets} host={host} onChoose={refine} onClose={() => setPickerOpen(false)} />
       )}
     </main>
   );
