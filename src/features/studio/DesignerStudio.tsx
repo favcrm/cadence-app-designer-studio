@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { StudioHost } from "../../host/port";
 import { AssetDetail } from "./AssetDetail";
 import { CreatePanel } from "./CreatePanel";
@@ -19,6 +19,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   // later attempt, capability loss or different catalog must not leave the
   // previous success banner standing.
   const [chatNotice, setChatNotice] = useState<{ text: string; assetId: string; revision: number } | null>(null);
+  const refineAttempt = useRef(0);
   const snapshot = studio.snapshot;
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
   const waiting = reason === "awaiting_host" || reason === "catalog_loading";
@@ -75,6 +76,14 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     if (notice === null) setChatNotice(null);
   }, [notice]);
 
+  // A capability loss invalidates every in-flight handoff, including one whose
+  // success arrives while the affordance is hidden.
+  useEffect(() => {
+    if (canRefine) return;
+    refineAttempt.current += 1;
+    setChatNotice(null);
+  }, [canRefine]);
+
   function openCreation() {
     setSelectedId(null);
     setCreateOpen(true);
@@ -86,11 +95,14 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   }
 
   async function refine(asset: StudioAsset): Promise<string | null> {
+    const attempt = ++refineAttempt.current;
+    const current = () => refineAttempt.current === attempt;
     setChatNotice(null);
     if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
     const { id, revision } = asset;
     try {
       const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
+      if (!current()) return null;
       if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
         setChatNotice({ text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision });
         return null;
@@ -100,7 +112,7 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
     } catch {
       // The handoff may have reached the host. Do not claim nothing happened.
     }
-    return "Could not confirm attachment. Check the chat composer before trying again.";
+    return current() ? "Could not confirm attachment. Check the chat composer before trying again." : null;
   }
 
   return (

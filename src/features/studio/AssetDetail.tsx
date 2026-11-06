@@ -81,7 +81,9 @@ export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceA
     const error = await onRefine(asset);
     if (alive.current) {
       setAttaching(false);
-      setNote(error ?? "Attached in chat. Describe your changes and send when ready.");
+      // Success is shown once by the parent notice, which is bound to the
+      // exact attached revision and cleared on the next attempt.
+      setNote(error);
     }
   }
 
