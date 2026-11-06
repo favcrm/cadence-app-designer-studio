@@ -22,6 +22,8 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
   const row = rows.find((asset) => asset.id === selected?.id) ?? null;
   const stale = row !== null && selected !== null && row.revision !== selected.revision;
   const choice = stale ? null : row;
+  const choiceRef = useRef(choice);
+  choiceRef.current = choice;
 
   useEffect(() => {
     if (row && !stale) return;
@@ -29,13 +31,21 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
   }, [row?.id, row?.revision, stale]);
 
   async function choose() {
-    if (!choice || busy) return;
+    const chosen = choice;
+    if (!chosen || busy) return;
     const owner = dialog.current;
     setBusy(true);
     setNote(null);
-    const error = await onChoose(choice);
+    const error = await onChoose(chosen);
     // A closed picker cannot mutate or dismiss a later instance.
     if (dialog.current !== owner || !owner?.open) return;
+    // Search or a catalog refresh may have hidden/replaced the selection while
+    // this request was in flight; its refusal must not describe another row.
+    if (choiceRef.current?.id !== chosen.id || choiceRef.current?.revision !== chosen.revision) {
+      setNote(null);
+      setBusy(false);
+      return;
+    }
     if (error === undefined) {
       setBusy(false);
       return;
