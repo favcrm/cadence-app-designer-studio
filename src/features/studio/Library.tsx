@@ -126,13 +126,15 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
         </select>
       </div>
 
-      <div className="ds-tagbar" aria-label="Filter by tag">
-        <span className="ds-tag-label">Tags</span>
-        <button type="button" className="chip" aria-pressed={tag === "all"} onClick={() => setTag("all")}>All</button>
-        {tags.map((t) => (
-          <button key={t} type="button" className="chip" aria-pressed={tag === t} onClick={() => setTag(t)}>{t}</button>
-        ))}
-      </div>
+      {tags.length > 0 && (
+        <div className="ds-tagbar" aria-label="Filter by tag">
+          <span className="ds-tag-label">Tags</span>
+          <button type="button" className="chip" aria-pressed={tag === "all"} onClick={() => setTag("all")}>All</button>
+          {tags.map((t) => (
+            <button key={t} type="button" className="chip" aria-pressed={tag === t} onClick={() => setTag(t)}>{t}</button>
+          ))}
+        </div>
+      )}
 
       <div className="ds-gallery-head">
         <p aria-live="polite">{rows.length} of {assets.length} assets</p>
@@ -155,7 +157,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
                   type="button"
                   className="ds-library-card"
                   aria-pressed={asset.id === selectedId}
-                  aria-label={`Open ${asset.title}. ${asset.lifecycle === "published" ? "In library" : "Draft"}. ${creator}. ${formatRelative(asset.createdAt)}.${asset.tags.length ? ` Tags: ${asset.tags.join(", ")}.` : ""}`}
+                  aria-label={`Open ${asset.title}. ${asset.kind === "image" ? "Image" : "Video"}. ${asset.lifecycle === "published" ? "In library" : "Draft"}. ${creator}. ${formatRelative(asset.createdAt)}.${asset.tags.length ? ` Tags: ${asset.tags.join(", ")}.` : ""}`}
                   onClick={() => onSelect(asset.id)}
                 >
                   <span className="ds-card-art">
