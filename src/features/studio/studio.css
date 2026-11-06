@@ -133,7 +133,7 @@
   font-size: var(--text-secondary);
 }
 .studio .ds-tab:hover { color: var(--color-ink-200); }
-.studio .ds-tab[aria-selected="true"] { color: var(--color-ink-100); border-bottom-color: var(--color-accent); }
+.studio .ds-tab[aria-pressed="true"] { color: var(--color-ink-100); border-bottom-color: var(--color-accent); }
 .studio .ds-tab:disabled { cursor: not-allowed; opacity: .5; }
 .studio .ds-tab-count {
   margin-left: 7px;

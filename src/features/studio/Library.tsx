@@ -84,14 +84,13 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
         </div>
       </header>
 
-      <div className="ds-tabs" role="tablist" aria-label="Library scope">
+      <div className="ds-tabs" role="group" aria-label="Library scope">
         {SCOPES.map((item) => (
           <button
             key={item.id}
             type="button"
-            role="tab"
             className="ds-tab"
-            aria-selected={scope === item.id}
+            aria-pressed={scope === item.id}
             disabled={item.id === "mine" && !actor}
             title={item.id === "mine" && !actor ? "The host has not identified the current user." : undefined}
             onClick={() => setScope(item.id)}
@@ -156,7 +155,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
                   type="button"
                   className="ds-library-card"
                   aria-pressed={asset.id === selectedId}
-                  aria-label={`Open ${asset.title}`}
+                  aria-label={`Open ${asset.title}. ${asset.lifecycle === "published" ? "In library" : "Draft"}. ${creator}. ${formatRelative(asset.createdAt)}.${asset.tags.length ? ` Tags: ${asset.tags.join(", ")}.` : ""}`}
                   onClick={() => onSelect(asset.id)}
                 >
                   <span className="ds-card-art">
