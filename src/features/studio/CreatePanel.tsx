@@ -1,4 +1,4 @@
-import { IMAGE_ASPECTS, MAX_PROMPT, TASK_STATUS, VIDEO_ASPECTS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, modelFor } from "./model";
+import { MAX_PROMPT, TASK_STATUS, VIDEO_ASPECTS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, modelFor } from "./model";
 import type { Phase } from "./state";
 import type { CreateDraft } from "./types";
 import type { Task } from "../../host/port";
@@ -25,10 +25,7 @@ interface Props {
 export function CreatePanel(props: Props) {
   const { draft, setDraft, problems, phase, busy, canSubmit } = props;
   const video = draft.task === "text_to_video" || draft.task === "image_to_video";
-  const aspects = video ? VIDEO_ASPECTS : IMAGE_ASPECTS;
-  const aspect = video ? draft.videoAspect : draft.imageAspect;
-  const setAspect = (value: string) =>
-    setDraft(video ? { ...draft, videoAspect: value as CreateDraft["videoAspect"] } : { ...draft, imageAspect: value as CreateDraft["imageAspect"] });
+  const disabledTasks = TASKS.filter((t) => !TASK_STATUS[t.id].enabled);
 
   return (
     <section aria-labelledby="ds-create-heading" className="ds-panel">
@@ -41,17 +38,20 @@ export function CreatePanel(props: Props) {
               key={t.id}
               type="button"
               aria-pressed={draft.task === t.id}
-              aria-describedby={!TASK_STATUS[t.id].enabled ? `ds-task-reason-${t.id}` : undefined}
+              aria-describedby={!TASK_STATUS[t.id].enabled ? "ds-task-note" : undefined}
               disabled={!TASK_STATUS[t.id].enabled}
+              title={!TASK_STATUS[t.id].enabled ? TASK_STATUS[t.id].reason : undefined}
               onClick={() => setDraft({ ...draft, task: t.id, model: modelFor(t.id) })}
             >
               {t.label}
             </button>
           ))}
         </div>
-        {TASKS.filter((t) => !TASK_STATUS[t.id].enabled).map((t) => (
-          <p key={t.id} id={`ds-task-reason-${t.id}`} className="ds-note" role="note">{t.label}: {TASK_STATUS[t.id].reason}</p>
-        ))}
+        {disabledTasks.length > 0 && (
+          <p id="ds-task-note" className="ds-hint" role="note">
+            Only new image creation runs here. Refine an existing image in chat; video is not supported in this release.
+          </p>
+        )}
       </fieldset>
 
       <label className="ds-field">
@@ -60,15 +60,14 @@ export function CreatePanel(props: Props) {
         <small>{draft.prompt.length}/{MAX_PROMPT}</small>
       </label>
 
-      <label className="ds-field">
-        <span>Aspect ratio</span>
-        <select className="field" value={aspect} onChange={(e) => setAspect(e.target.value)}>
-          {aspects.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-      </label>
-
       {video && (
         <div className="ds-row">
+          <label className="ds-field">
+            <span>Aspect ratio</span>
+            <select className="field" value={draft.videoAspect} onChange={(e) => setDraft({ ...draft, videoAspect: e.target.value as CreateDraft["videoAspect"] })}>
+              {VIDEO_ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
           <label className="ds-field">
             <span>Duration (s)</span>
             <select className="field" value={draft.duration} onChange={(e) => setDraft({ ...draft, duration: Number(e.target.value) as CreateDraft["duration"] })}>
