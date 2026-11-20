@@ -143,9 +143,18 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
 
       {rows.length === 0 ? (
         <div className="ds-empty ds-library-empty">
-          <strong>No assets match</strong>
-          <span>Clear the search or filters to see the workspace library.</span>
-          <button type="button" className="btn btn-sm" onClick={clearFilters}>Clear filters</button>
+          {assets.length === 0 ? (
+            <>
+              <strong>No assets yet</strong>
+              <span>Create a design to start building the workspace library.</span>
+            </>
+          ) : (
+            <>
+              <strong>No assets match</strong>
+              <span>Clear the search or filters to see the workspace library.</span>
+              <button type="button" className="btn btn-sm" onClick={clearFilters}>Clear filters</button>
+            </>
+          )}
         </div>
       ) : (
         <ul className="ds-library-grid" aria-label="Design assets">

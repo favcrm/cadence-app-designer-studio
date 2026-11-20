@@ -6,6 +6,11 @@
    (.btn, .btn-primary, .btn-ghost, .field, .chip, .card/.tcard,
    .badge, .seg, .drawer/.dhead/.dbody/.dfoot) supply the control appearance;
    ds-* classes adapt only app-local layout, including the full-height drawer. */
+html[data-cadence-kit],
+html[data-cadence-kit] body {
+  background: transparent;
+}
+
 .studio {
   font: var(--text-body)/1.45 var(--font-sans);
   color: var(--color-ink-300);
