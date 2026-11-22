@@ -54,3 +54,27 @@ The ceiling is not removed to make an incompatible request pass. Local
 native/browser verification uses an isolated host, synthetic test identities and
 a loopback producer, not a live model or paid provider. Source/package output is
 not installation or operational acceptance.
+
+## Hosted catalogue release — DSN-8
+
+Hosted AgenticOS tenants install Designer Studio from the catalogue, not from
+the native `scripts/package-release.sh` kit (that kit targets
+`cadence --org local` only).
+
+- `.github/workflows/publish.yml` runs on a plain `vX.Y.Z` tag whose commit is
+  on `main`. It checks `package/` with an exact Cadence CLI (input,
+  `CADENCE_TARGET_VERSION` variable, else `0.5.1`; the check must pass
+  outright) and posts the exact bundle through GitHub OIDC to the catalogue
+  candidates route. Only a `published`/`unchanged` receipt for this
+  repository, commit, version and digest counts.
+- The catalogue accepts it only because agenticos-v2 `REVIEWED_APP_PUBLISHERS`
+  binds `designer-studio` to this repository, this workflow file and the
+  plain-tag ref. Prerelease tags are refused.
+- `.github/publisher/` holds its own locked dependency so the root
+  `package.json`/`pnpm-lock.yaml` (part of the screen's provenance digest) do
+  not change. CI's `publish-dry-run` job runs the same checks without OIDC.
+
+Order: reviewed `main` → the v2 publisher binding deployed to production →
+an operator pushes the tag. Tagging, installation on a tenant (owner consent),
+capability binding and any paid generation are separate human decisions.
+Listing is not installation.
