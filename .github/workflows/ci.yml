@@ -39,7 +39,7 @@ jobs:
           run_install: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: "22.23.2"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
@@ -68,7 +68,7 @@ jobs:
           run_install: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 22
+          node-version: "22.23.2"
       - run: pnpm install --frozen-lockfile --dir .github/publisher
       - name: Install the exact pinned Cadence CLI
         run: bash .github/publisher/install-cadence.sh "$CADENCE_VERSION" >> "$GITHUB_PATH"
