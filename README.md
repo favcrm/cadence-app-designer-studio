@@ -82,8 +82,9 @@ Listing is not installation.
 ### Declared host contracts — DSN-9
 
 `app.md` declares `needs.requires.contracts: {app-screens: [1]}`, the only
-contract that both the native checker (`cadence app check`, which the publish
-workflow requires to pass) and the hosted tenant install profile accept. The
+contract this package uses that both the native checker (`cadence app check`,
+which the publish workflow requires to pass) and the hosted tenant install
+profile accept. The
 screen's real host dependency, `screen-media.v1`, is not declarable yet:
 native Cadence 0.5.1 refuses it as an unknown contract, so declaring it would
 fail the publish check. `app-assistant` is accepted natively but is absent from
