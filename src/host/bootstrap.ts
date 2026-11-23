@@ -474,8 +474,8 @@ export function connectFrameHost(): StudioHost {
   /** Primary only: ask the board for its drawer on one asset. The context is a
    *  bounded pointer, never authority; the child re-reads the asset. */
   async function openDrawer(context: DrawerAssetContext): Promise<DrawerOpenResult> {
-    if (closedReason || !scope || surfaceState.role !== "primary") return "refused";
-    if (!PUBLISH_ASSET_ID.test(context.assetId) || !isCount(context.revision, 1)) return "refused";
+    if (closedReason || !scope || surfaceState.role !== "primary") return "not_sent";
+    if (!PUBLISH_ASSET_ID.test(context.assetId) || !isCount(context.revision, 1)) return "not_sent";
     const outcome = await call("screen.drawer.open", {
       surface: DRAWER_SURFACE,
       size: "wide",
@@ -485,7 +485,11 @@ export function connectFrameHost(): StudioHost {
       const reply = record(outcome.data);
       return reply?.mode === "drawer" ? "opened" : "uncertain";
     }
-    return "refusal" in outcome ? "refused" : "uncertain";
+    if ("refusal" in outcome) {
+      // BUSY / NOT_SENT are this frame's own local refusals, not the host's.
+      return outcome.refusal.code === BUSY.code || outcome.refusal.code === NOT_SENT.code ? "not_sent" : "refused";
+    }
+    return "uncertain";
   }
 
   /** Drawer child only: read back the pointer its primary opened it with. */

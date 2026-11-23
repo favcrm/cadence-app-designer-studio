@@ -144,7 +144,7 @@ async function frameChecks() {
     check('F5 a host refusal is "refused" (caller falls back in-frame)', (await f.host.openDrawer({ assetId: ASSET, revision: 1 })) === 'refused');
     const before = f.calls('screen.drawer.open').length;
     const bad = await f.host.openDrawer({ assetId: 'not-an-asset', revision: 1 });
-    check('F6 a malformed pointer is refused locally and never sent', bad === 'refused' && f.calls('screen.drawer.open').length === before);
+    check('F6 a malformed pointer is not sent (local not_sent, not a host refusal)', bad === 'not_sent' && f.calls('screen.drawer.open').length === before);
     // F7: closing the board drawer (modal true -> false) re-reads the catalog.
     const reads = f.calls('media.read').length;
     f.send({ v: 1, op: 'surface', role: 'primary', modal: true });
@@ -181,7 +181,7 @@ async function frameChecks() {
       JSON.stringify(read));
     ctx = { asset_id: ASSET, revision: 1, extra: true };
     check('F11 a context with extra keys is rejected (null)', (await f.host.drawerContext()) === null);
-    check('F12 a drawer child never opens another drawer', (await f.host.openDrawer({ assetId: ASSET, revision: 1 })) === 'refused' && f.calls('screen.drawer.open').length === 0);
+    check('F12 a drawer child never opens another drawer (not sent; the host would close the port)', (await f.host.openDrawer({ assetId: ASSET, revision: 1 })) === 'not_sent' && f.calls('screen.drawer.open').length === 0);
     f.host.closeDrawer();
     check('F13 drawer child close sends screen.drawer.close {}',
       await waitFor(() => f.calls('screen.drawer.close').length === 1) && JSON.stringify(f.calls('screen.drawer.close')[0].args) === '{}');

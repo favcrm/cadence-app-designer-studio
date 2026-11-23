@@ -32,6 +32,10 @@ export function Dropdown<T extends string>({ label, prefix, value, options, onCh
   const current = options[selectedIndex];
 
   function show() {
+    // Place before the first render so the list is visible (and focusable)
+    // in the same commit that opens it.
+    const rect = trigger.current?.getBoundingClientRect();
+    if (rect) setPlace({ top: rect.bottom + 4, left: rect.left, minWidth: rect.width });
     setActive(selectedIndex);
     setOpen(true);
   }
@@ -46,14 +50,11 @@ export function Dropdown<T extends string>({ label, prefix, value, options, onCh
   }
 
   useLayoutEffect(() => {
-    if (!open || !trigger.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    setPlace({ top: rect.bottom + 4, left: rect.left, minWidth: rect.width });
+    if (open) list.current?.focus();
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    list.current?.focus();
     const away = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) hide(false);
     };

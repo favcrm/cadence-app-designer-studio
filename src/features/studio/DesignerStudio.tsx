@@ -95,7 +95,9 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
         setSelectedId(null);
         return;
       }
-      setDrawerMode("inframe");
+      // Only the host's own refusal means "no board drawer here" for the
+      // session; a local not-sent or an unconfirmed open falls back once.
+      if (result === "refused") setDrawerMode("inframe");
     }
     setSelectedId(asset.id);
   }
@@ -158,6 +160,10 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
  *  frame's own catalog and must still be the same revision. */
 function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSnapshot }) {
   const [context, setContext] = useState<DrawerAssetContext | null | "loading">("loading");
+  // The opened revision is checked once, when the asset first resolves. After
+  // that the drawer follows the asset by id, so this frame's own confirmed
+  // publish (revision + 1) stays visible instead of reading as a conflict.
+  const [verified, setVerified] = useState<"pending" | "ok" | "stale">("pending");
   const connected = snapshot.status === "ready";
   useEffect(() => {
     if (!connected || context !== "loading") return;
@@ -174,12 +180,19 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
   else if (context === null) message = "This image could not be opened here. Close this panel and open it again from the Library.";
   else {
     asset = snapshot.assets.find((a) => a.id === context.assetId) ?? null;
+    const state = verified === "pending" && asset ? (asset.revision === context.revision ? "ok" : "stale") : verified;
     if (!asset) message = "This image is no longer in the Library.";
-    else if (asset.revision !== context.revision) {
+    else if (state === "stale") {
       message = "This image changed since you opened it. Close this panel and open it again from the Library.";
       asset = null;
     }
   }
+  const firstAsset = context !== "loading" && context !== null && snapshot.status === "ready"
+    ? snapshot.assets.find((a) => a.id === context.assetId) ?? null : null;
+  useEffect(() => {
+    if (verified !== "pending" || !firstAsset || context === "loading" || context === null) return;
+    setVerified(firstAsset.revision === context.revision ? "ok" : "stale");
+  }, [verified, firstAsset, context]);
 
   return (
     <main className="studio ds-in-drawer" aria-label="Designer Studio image details">

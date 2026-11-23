@@ -153,8 +153,10 @@ export interface DrawerAssetContext {
 }
 
 /** `opened`: the board drew its drawer. `refused`: the host said no (fall
- *  back in-frame). `uncertain`: the request may have reached the host. */
-export type DrawerOpenResult = "opened" | "refused" | "uncertain";
+ *  back in-frame for the session). `not_sent`: this frame did not send it
+ *  (busy, disconnected or a bad pointer). `uncertain`: it may have reached
+ *  the host. */
+export type DrawerOpenResult = "opened" | "refused" | "not_sent" | "uncertain";
 
 export interface StudioHost {
   snapshot(): StudioSnapshot;
