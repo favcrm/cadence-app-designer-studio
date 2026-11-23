@@ -2,7 +2,7 @@
 # Existing app checks; caller must hold the normal build-slot admission.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-: "${DSN_HOST_SOURCE:?point to the qualified 0b36010f host source}"
+: "${DSN_HOST_SOURCE:?point to a Cadence ui/src checkout at the CI host-contract pin (.github/workflows/ci.yml)}"
 checks() {
   pnpm run typecheck &&
   node acceptance/image-generation-bridge.mjs &&
