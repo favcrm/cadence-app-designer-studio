@@ -1,14 +1,7 @@
-import { MAX_PROMPT, TASK_STATUS, VIDEO_ASPECTS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS, modelFor } from "./model";
+import { useRef, useState } from "react";
+import { MAX_PROMPT, STYLE_CHIPS, appendStyle } from "./model";
 import type { Phase } from "./state";
 import type { CreateDraft } from "./types";
-import type { Task } from "../../host/port";
-
-const TASKS: { id: Task; label: string }[] = [
-  { id: "image", label: "Create image" },
-  { id: "edit", label: "Edit image" },
-  { id: "text_to_video", label: "Text to video" },
-  { id: "image_to_video", label: "Animate image" },
-];
 
 interface Props {
   draft: CreateDraft;
@@ -16,120 +9,201 @@ interface Props {
   problems: string[];
   phase: Phase;
   busy: boolean;
-  canSubmit: boolean;
+  /** The host advertises generation on this screen. */
+  generateAvailable: boolean;
+  /** A request may still be open: no new submit, no start-over. */
+  locked: boolean;
   onRequest: () => void;
+  onStartOver: () => void;
   canRefine: boolean;
   onChooseReference: () => void;
+  onClose: () => void;
 }
 
+const EXAMPLE = "e.g. A flat illustration of a single blue paper airplane on a plain white background, no text.";
+
+/** New design: one image from one brief. This panel stays in the app's own
+ *  frame because the one-generation lock and its uncertain/no-resend handling
+ *  live in this frame; a board drawer child is unmounted on close and would
+ *  forget an open paid run. The frame never prices or approves: Cadence draws
+ *  its own price button, and one press there approves one paid run. */
 export function CreatePanel(props: Props) {
-  const { draft, setDraft, problems, phase, busy, canSubmit } = props;
-  const video = draft.task === "text_to_video" || draft.task === "image_to_video";
-  const disabledTasks = TASKS.filter((t) => !TASK_STATUS[t.id].enabled);
+  const { draft, setDraft, problems, phase, busy, generateAvailable, locked } = props;
+  const [tried, setTried] = useState(false);
+  const brief = useRef<HTMLTextAreaElement>(null);
+  const inProgress = busy || phase.kind !== "idle" && phase.kind !== "refused" && phase.kind !== "conflict";
+
+  function submit() {
+    if (problems.length > 0) {
+      setTried(true);
+      brief.current?.focus();
+      return;
+    }
+    setTried(false);
+    props.onRequest();
+  }
 
   return (
-    <section aria-labelledby="ds-create-heading" className="ds-panel">
-      <h2 id="ds-create-heading">Create</h2>
-      <fieldset className="ds-task-field">
-        <legend>Task</legend>
-        <div className="seg ds-task-seg">
-          {TASKS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              aria-pressed={draft.task === t.id}
-              aria-describedby={!TASK_STATUS[t.id].enabled ? "ds-task-note" : undefined}
-              disabled={!TASK_STATUS[t.id].enabled}
-              title={!TASK_STATUS[t.id].enabled ? TASK_STATUS[t.id].reason : undefined}
-              onClick={() => setDraft({ ...draft, task: t.id, model: modelFor(t.id) })}
-            >
-              {t.label}
-            </button>
-          ))}
+    <aside className="drawer ds-drawer ds-create" aria-labelledby="ds-new-design-heading">
+      <header className="dhead">
+        <div className="ds-drawer-title">
+          <h3 id="ds-new-design-heading">New design</h3>
+          <p>One image from one brief</p>
         </div>
-        {disabledTasks.length > 0 && (
-          <p id="ds-task-note" className="ds-hint" role="note">
-            Only new image creation runs here. Refine an existing image in chat; video is not supported in this release.
-          </p>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={props.onClose} aria-label="Close new design">Close</button>
+      </header>
+
+      <div className="dbody ds-drawer-body">
+        {inProgress ? (
+          <Progress phase={phase} busy={busy} brief={draft.prompt.trim()} />
+        ) : (
+          <>
+            <div className="ds-create-field">
+              <div className="ds-create-label">
+                <label htmlFor="ds-brief">Describe the image</label>
+                <span>Subject, style and background</span>
+              </div>
+              <div className="ds-brief">
+                <textarea
+                  id="ds-brief"
+                  ref={brief}
+                  className="field"
+                  value={draft.prompt}
+                  maxLength={MAX_PROMPT}
+                  rows={6}
+                  placeholder={EXAMPLE}
+                  aria-invalid={tried && problems.length > 0}
+                  aria-describedby={tried && problems.length > 0 ? "ds-brief-problems" : undefined}
+                  onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
+                />
+                <span className="ds-brief-count" aria-hidden="true">{draft.prompt.length} / {MAX_PROMPT}</span>
+              </div>
+              {tried && problems.length > 0 && (
+                <ul id="ds-brief-problems" className="ds-problems" role="alert">
+                  {problems.map((p) => <li key={p}>{p}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div className="ds-create-field">
+              <div className="ds-create-label">
+                <span id="ds-style-label">Add a style</span>
+                <span>Adds a sentence to your brief</span>
+              </div>
+              <div className="ds-chips" role="group" aria-labelledby="ds-style-label">
+                {STYLE_CHIPS.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="chip"
+                    onClick={() => {
+                      setDraft({ ...draft, prompt: appendStyle(draft.prompt, chip) });
+                      brief.current?.focus();
+                    }}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="ds-facts">
+              <div className="ds-fact"><strong>Square · 1:1</strong><span>The only size in this release</span></div>
+              <div className="ds-fact"><strong>One image</strong><span>Saved as a draft in the Library</span></div>
+            </div>
+
+            <div className="ds-linkrow">
+              <span>Changing an existing image instead?</span>
+              <button type="button" className="btn btn-sm" disabled={!props.canRefine} title={props.canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={props.onChooseReference}>Refine in chat</button>
+            </div>
+
+            {phase.kind === "refused" && <p className="ds-note ds-warn" role="alert">{phase.text}</p>}
+          </>
         )}
-      </fieldset>
-
-      <label className="ds-field">
-        <span>Creative brief</span>
-        <textarea className="field" value={draft.prompt} maxLength={MAX_PROMPT} rows={4} onChange={(e) => setDraft({ ...draft, prompt: e.target.value })} />
-        <small>{draft.prompt.length}/{MAX_PROMPT}</small>
-      </label>
-
-      {video && (
-        <div className="ds-row">
-          <label className="ds-field">
-            <span>Aspect ratio</span>
-            <select className="field" value={draft.videoAspect} onChange={(e) => setDraft({ ...draft, videoAspect: e.target.value as CreateDraft["videoAspect"] })}>
-              {VIDEO_ASPECTS.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </label>
-          <label className="ds-field">
-            <span>Duration (s)</span>
-            <select className="field" value={draft.duration} onChange={(e) => setDraft({ ...draft, duration: Number(e.target.value) as CreateDraft["duration"] })}>
-              {VIDEO_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </label>
-          <label className="ds-field">
-            <span>Resolution</span>
-            <select className="field" value={draft.videoResolution} onChange={(e) => setDraft({ ...draft, videoResolution: e.target.value as CreateDraft["videoResolution"] })}>
-              {VIDEO_RESOLUTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
-
-      <div className="ds-reference-action">
-        <span className="ds-hint">Changing an existing image? Choose a visual reference and continue in chat.</span>
-        <button type="button" className="btn btn-sm" disabled={!props.canRefine} onClick={props.onChooseReference}>Choose reference</button>
       </div>
 
-      {problems.length > 0 && (
-        <ul className="ds-problems">
-          {problems.map((p) => <li key={p}>{p}</li>)}
-        </ul>
-      )}
-
-      <Status phase={phase} />
-
-      <button type="button" className="btn btn-primary btn-sm" disabled={!canSubmit || busy} onClick={props.onRequest}>
-        {busy ? "Sending..." : "Request generation"}
-      </button>
-      <p className="ds-hint">Review the model, inputs and price in Cadence before approving. Nothing runs without approval.</p>
-    </section>
+      <div className="dfoot ds-create-foot">
+        {inProgress ? (
+          <>
+            {locked && <p className="ds-hint">Closing keeps the request open; it can't be cancelled from here.</p>}
+            <span className="ds-grow" />
+            {!locked && <button type="button" className="btn btn-sm" onClick={() => { setTried(false); props.onStartOver(); }}>Start another</button>}
+            <button type="button" className="btn btn-primary btn-sm" onClick={props.onClose}>Done</button>
+          </>
+        ) : (
+          <>
+            <p className="ds-hint">Next, Cadence shows the price on its own approve button. One press approves and starts one paid run.</p>
+            <span className="ds-grow" />
+            <button type="button" className="btn btn-sm" onClick={props.onClose}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!generateAvailable || locked}
+              title={generateAvailable ? undefined : "Generation is not available on this screen."}
+              onClick={submit}
+            >
+              Continue
+            </button>
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
-function Status({ phase }: { phase: Phase }) {
+type StepState = "done" | "now" | "todo" | "failed";
+
+function Progress({ phase, busy, brief }: { phase: Phase; busy: boolean; brief: string }) {
+  const waiting = busy || phase.kind === "awaiting_host";
+  const running = phase.kind === "pending";
+  const finished = phase.kind === "completed";
+  const failed = phase.kind === "generation_failed" || phase.kind === "cancelled";
+  const steps: { title: string; text: string; state: StepState }[] = [
+    { title: "Sent to Cadence", text: "Your brief is fixed for this run.", state: "done" },
+    {
+      title: "Waiting for your approval",
+      text: "Press Cadence's price button at the bottom of the screen to approve and start.",
+      state: waiting ? "now" : phase.kind === "uncertain" ? "todo" : "done",
+    },
+    {
+      title: "Generating",
+      text: "Usually under a minute.",
+      state: running ? "now" : finished ? "done" : failed ? "failed" : "todo",
+    },
+    { title: "Saved to your Library as a draft", text: "It appears in the Library when ready.", state: finished ? "done" : "todo" },
+  ];
+  return (
+    <div className="ds-progress">
+      {brief && <blockquote className="ds-quote">{brief}</blockquote>}
+      <ol className="ds-steps" aria-label="Request progress">
+        {steps.map((step) => (
+          <li key={step.title} className={`ds-step is-${step.state}`} aria-current={step.state === "now" ? "step" : undefined}>
+            <span className="ds-step-dot" aria-hidden="true" />
+            <span><strong>{step.title}</strong><span>{step.text}</span></span>
+          </li>
+        ))}
+      </ol>
+      <Outcome phase={phase} />
+    </div>
+  );
+}
+
+function Outcome({ phase }: { phase: Phase }) {
   switch (phase.kind) {
-    case "idle":
-      return null;
-    case "awaiting_host":
-      return <p className="ds-note" role="status">Waiting for Cadence to show the price and ask for approval.</p>;
-    case "pending":
-      return <p className="ds-note" role="status">Accepted by Cadence. The run is still open; the result appears in the library as the host reports it.</p>;
     case "completed":
-      return <p className="ds-note ds-ok" role="status">Generation completed. Check the refreshed library.</p>;
+      return <p className="ds-note ds-ok" role="status">Done. The new image is in the Library as a draft.</p>;
     case "generation_failed":
-      return <p className="ds-note ds-warn" role="status">Generation failed in Cadence. Check the library before trying again.</p>;
+      return <p className="ds-note ds-warn" role="status">Generation failed in Cadence. Check the Library before trying again.</p>;
     case "cancelled":
-      return <p className="ds-note ds-warn" role="status">The generation run was cancelled in Cadence.</p>;
-    case "saved":
-      return <p className="ds-note ds-ok" role="status">Saved to your library.</p>;
+      return <p className="ds-note ds-warn" role="status">The run was cancelled in Cadence.</p>;
     case "uncertain":
       return (
         <div className="ds-note ds-warn" role="status">
           <p>{phase.text}</p>
-          <p>Check the library for this request before starting another. Nothing is sent again from here.</p>
+          <p>Check the Library for this request before starting another. Nothing is sent again from here.</p>
         </div>
       );
-    case "conflict":
-      return <p className="ds-note ds-warn" role="alert">This asset changed (revision {phase.currentRevision}). Your edits are kept; reload the asset to continue.</p>;
-    case "refused":
-      return <p className="ds-note ds-warn" role="alert">{phase.text}</p>;
+    default:
+      return null;
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Receipt, StudioAsset, StudioHost, StudioJob } from "../../host/port";
-import { describeCreator, formatRelative, lifecycleLabel } from "./model";
+import { describeCreator, formatAbsolute, formatRelative } from "./model";
 import { AssetPreview } from "./AssetPreview";
 import { newRequestId } from "./state";
 
@@ -15,14 +15,18 @@ interface Props {
   canRefine: boolean;
   sourceAssets: StudioAsset[];
   onRefine: (asset: StudioAsset) => Promise<string | null | undefined>;
-  onClose: () => void;
+  /** In-frame only: the board drawer owns its own close control. */
+  onClose?: () => void;
+  /** `inframe`: the app's own panel (fallback). `host`: rendered inside the
+   *  board's drawer, which supplies the panel, scrim and close control. */
+  chrome?: "inframe" | "host";
 }
 
 /** Asset drawer built from the kit's own .drawer frame primitives. Publishing
  *  curates this same asset into the workspace library: the original bytes and
  *  id are unchanged, and the host checks the revision and the viewer's mutation
  *  role before it applies. */
-export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceAssets, lineageJobs, host, onRefine, onClose }: Props) {
+export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceAssets, lineageJobs, host, onRefine, onClose, chrome = "inframe" }: Props) {
   const [note, setNote] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -78,48 +82,95 @@ export function AssetDetail({ asset, canPublish, canDownload, canRefine, sourceA
   async function refine() {
     if (!canRefine || attaching || asset.kind !== "image") return;
     setAttaching(true);
-    await onRefine(asset);
-    if (alive.current) setAttaching(false);
+    setNote(null);
+    const error = await onRefine(asset);
+    if (!alive.current) return;
+    setAttaching(false);
+    // Success needs no banner: the chat composer shows the attached image.
+    if (error) setNote(error);
+  }
+
+  const relative = formatRelative(asset.createdAt);
+  const relativeInline = relative === "Just now" || relative === "Yesterday" ? relative.toLowerCase() : relative;
+  const created = `${formatAbsolute(asset.createdAt)} (${relativeInline})`;
+  const subtitle = `${published ? "In workspace library" : "Draft"} · created ${relativeInline}`;
+  const body = (
+    <>
+      <AssetPreview asset={asset} host={host} />
+      <dl className="ds-meta-list">
+        <dt>Status</dt>
+        <dd><span className={`ds-status${published ? " is-published" : ""}`}>{published ? "In workspace library" : "Draft — only in this workspace's drafts"}</span></dd>
+        <dt>Type</dt>
+        <dd>{asset.kind === "image" ? "Image" : "Video"}</dd>
+        <dt>Created by</dt>
+        <dd>{describeCreator(asset.creator)}</dd>
+        <dt>Created</dt>
+        <dd>{created}</dd>
+        {asset.model && (<><dt>Model</dt><dd>{asset.model}</dd></>)}
+      </dl>
+      {asset.tags.length > 0 && (
+        <div className="ds-detail-tags" aria-label="Tags">
+          {asset.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
+        </div>
+      )}
+      {asset.prompt && (
+        <section className="ds-detail-section" aria-label="Brief">
+          <h4>Brief</h4>
+          <blockquote className="ds-quote">{asset.prompt}</blockquote>
+        </section>
+      )}
+      {asset.lineage && asset.lineage.length > 0 && (
+        <section className="ds-detail-section" aria-label="Refined from">
+          <h4>Refined from</h4>
+          {asset.lineage.map((id) => <p key={id} className="ds-lineage-item">{sourceAssets.find((source) => source.id === id)?.title ?? id}</p>)}
+          <p className="ds-hint">The source image is unchanged.</p>
+        </section>
+      )}
+      {lineageJobs.length > 0 && (
+        <ul className="ds-jobs">
+          {lineageJobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {j.note}</li>)}
+        </ul>
+      )}
+      {note && <p className="ds-note" role="status">{note}</p>}
+    </>
+  );
+  const actions = (
+    <>
+      <button type="button" className="btn btn-sm" disabled={!canDownload || downloading} title={canDownload ? undefined : unavailable} onClick={download}>{downloading ? "Starting download…" : "Download original"}</button>
+      <button type="button" className="btn btn-sm" disabled={!canRefine || attaching || asset.kind !== "image"} title={canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={() => void refine()}>{attaching ? "Attaching…" : "Refine in chat"}</button>
+      <span className="ds-grow" />
+      {!published && (
+        <button type="button" className="btn btn-primary btn-sm" disabled={!canPublish} title={canPublish ? undefined : "Publishing is not available in this workspace."} onClick={publish}>
+          Add to workspace library
+        </button>
+      )}
+    </>
+  );
+
+  if (chrome === "host") {
+    return (
+      <section className="ds-host-detail" aria-labelledby="ds-asset-heading">
+        <header className="ds-host-detail-head">
+          <h2 id="ds-asset-heading">{asset.title}</h2>
+          <p>{subtitle}</p>
+        </header>
+        <div className="ds-host-detail-body">{body}</div>
+        <footer className="ds-host-detail-foot">{actions}</footer>
+      </section>
+    );
   }
 
   return (
     <aside className="drawer ds-drawer" aria-labelledby="ds-asset-heading">
       <header className="dhead">
-        <h3 id="ds-asset-heading">{asset.title}</h3>
+        <div className="ds-drawer-title">
+          <h3 id="ds-asset-heading">{asset.title}</h3>
+          <p>{subtitle}</p>
+        </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close asset details">Close</button>
       </header>
-      <div className="dbody ds-drawer-body">
-        <AssetPreview asset={asset} host={host} />
-        <p className="ds-meta">{asset.kind} · {describeCreator(asset.creator)} · {lifecycleLabel(asset)} · revision {asset.revision} · {formatRelative(asset.createdAt)}</p>
-        {asset.tags.length > 0 && (
-          <div className="ds-detail-tags" aria-label="Tags">
-            {asset.tags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
-          </div>
-        )}
-        {asset.prompt && <p className="ds-prompt">{asset.prompt}</p>}
-        {asset.lineage && asset.lineage.length > 0 && (
-          <div className="ds-lineage">
-            <span className="ds-hint">Refined from</span>
-            {asset.lineage.map((id) => <span key={id}>{sourceAssets.find((source) => source.id === id)?.title ?? id}</span>)}
-            <span className="ds-hint">The source image is unchanged.</span>
-          </div>
-        )}
-        {lineageJobs.length > 0 && (
-          <ul className="ds-jobs">
-            {lineageJobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {j.note}</li>)}
-          </ul>
-        )}
-        {note && <p className="ds-note" role="status">{note}</p>}
-      </div>
-      <div className="dfoot">
-        <button type="button" className="btn btn-primary btn-sm" disabled={!canRefine || attaching || asset.kind !== "image"} title={canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={() => void refine()}>{attaching ? "Attaching…" : "Refine in chat"}</button>
-        <button type="button" className="btn btn-sm" disabled={!canDownload || downloading} title={canDownload ? undefined : unavailable} onClick={download}>Download original</button>
-        {!published && (
-          <button type="button" className="btn btn-sm" disabled={!canPublish} title={canPublish ? undefined : "Publishing is not available in this workspace."} onClick={publish}>
-            Add to library
-          </button>
-        )}
-      </div>
+      <div className="dbody ds-drawer-body">{body}</div>
+      <div className="dfoot">{actions}</div>
     </aside>
   );
 }

@@ -60,9 +60,9 @@ export function validate(draft: CreateDraft): string[] {
   const problems: string[] = [];
   if (!TASK_STATUS[draft.task].enabled) problems.push(TASK_STATUS[draft.task].reason ?? "This task is not available.");
   const prompt = draft.prompt.trim();
-  if (prompt.length === 0) problems.push("Write a prompt.");
-  if (draft.prompt.length > MAX_PROMPT) problems.push(`Keep the prompt to ${MAX_PROMPT} characters.`);
-  if (prompt.length > 0 && !isVisiblePrompt(prompt)) problems.push("The prompt has invisible or control characters; use plain visible text.");
+  if (prompt.length === 0) problems.push("Write a brief to continue.");
+  if (draft.prompt.length > MAX_PROMPT) problems.push(`Keep the brief to ${MAX_PROMPT} characters.`);
+  if (prompt.length > 0 && !isVisiblePrompt(prompt)) problems.push("The brief has invisible or control characters; use plain visible text.");
   if (draft.task === "image" && draft.imageAspect !== "1:1") problems.push("Image generation is square only here.");
   if (draft.references.length > 0) problems.push("This generation task takes no reference images.");
   return problems;
@@ -124,4 +124,26 @@ export function formatRelative(epoch: number, now = Date.now()): string {
   if (seconds < 172800) return "Yesterday";
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(epoch);
+}
+
+/** "1 asset", "2 assets". */
+export function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** Absolute local date and time for detail metadata, e.g. "23 Nov 2026, 06:39". */
+export function formatAbsolute(epoch: number): string {
+  if (!Number.isFinite(epoch) || epoch <= 0) return "Unknown";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(epoch);
+}
+
+/** Style phrases a person may append to a brief. Text only: they change the
+ *  brief, never the model, size or price. */
+export const STYLE_CHIPS = ["Flat illustration", "Photograph", "3D render", "Minimal line art", "Watercolour", "Plain white background", "No text"] as const;
+
+/** Append one style phrase as its own sentence, within the brief limit. */
+export function appendStyle(brief: string, phrase: string): string {
+  const base = brief.trimEnd();
+  const joined = base.length === 0 ? `${phrase}.` : `${base}${/[.!?]$/.test(base) ? "" : "."} ${phrase}.`;
+  return joined.length <= MAX_PROMPT ? joined : brief;
 }

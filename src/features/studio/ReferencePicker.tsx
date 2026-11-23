@@ -67,7 +67,7 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
       <p className="ds-hint">Attach an image to chat, then describe your changes. Nothing is sent or generated yet.</p>
       <label className="ds-field">
         <span>Search images</span>
-        <input type="search" className="field" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus />
+        <input type="search" className="field" value={query} placeholder="Search by title" onChange={(event) => setQuery(event.target.value)} autoFocus />
       </label>
       <ul className="ds-grid ds-picker-grid" aria-label="Reference images">
         {rows.map((asset) => (
@@ -83,7 +83,7 @@ export function ReferencePicker({ assets, host, onChoose, onClose }: {
       {note && <p className="ds-note ds-warn" role="alert">{note}</p>}
       {stale && <p className="ds-note ds-warn" role="alert">This image changed. Select it again before attaching.</p>}
       <footer className="ds-picker-footer">
-        <span className="ds-hint">{choice ? choice.title : stale ? "Select the current image" : "Select one image"}</span>
+        <span className="ds-hint">{choice ? `Selected: ${choice.title}` : stale ? "Select the current image" : "No image selected"}</span>
         <button type="button" className="btn btn-primary btn-sm" disabled={!choice || busy} onClick={() => void choose()}>{busy ? "Attaching…" : "Use in chat"}</button>
       </footer>
     </dialog>

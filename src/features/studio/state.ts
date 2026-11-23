@@ -44,7 +44,8 @@ export function useStudio(host: StudioHost) {
   // submit is offered here, and the person checks the library instead.
   const locked = busy || phase.kind === "awaiting_host" || phase.kind === "pending" || phase.kind === "uncertain";
   // Catalog readiness is not generation readiness: generation is never offered until the host advertises it.
-  const canSubmit = problems.length === 0 && snapshot.status === "ready" && snapshot.capabilities.generate && !locked;
+  const generateAvailable = snapshot.status === "ready" && snapshot.capabilities.generate;
+  const canSubmit = problems.length === 0 && generateAvailable && !locked;
 
   /** Send one intent. The intent's values and request id are captured once;
    *  later edits to the form never change what this send means. */
@@ -70,7 +71,16 @@ export function useStudio(host: StudioHost) {
     setPhase(fromReceipt(receipt));
   }
 
-  return { snapshot, draft, setDraft, phase, busy, problems, canSubmit, requestGeneration };
+  /** Clear a finished request and start a new brief. Refused while a request
+   *  may still be open: an uncertain or pending run is never forgotten. */
+  function startOver() {
+    if (locked) return;
+    activeIntent.current = null;
+    setPhase({ kind: "idle" });
+    setDraft(emptyDraft());
+  }
+
+  return { snapshot, draft, setDraft, phase, busy, problems, canSubmit, generateAvailable, locked, requestGeneration, startOver };
 }
 
 /** Hex request id: works in an opaque-origin frame, where crypto.randomUUID may be absent. */
