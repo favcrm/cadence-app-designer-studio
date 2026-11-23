@@ -1,7 +1,7 @@
 ---
 app: designer-studio
 title: Designer Studio
-version: '0.1.5'
+version: '0.1.6'
 summary: Create images from a brief and keep them in a workspace Design Library. Refining a Library image in chat needs host support.
 needs:
   connections: []
