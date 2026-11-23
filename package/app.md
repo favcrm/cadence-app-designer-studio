@@ -1,7 +1,7 @@
 ---
 app: designer-studio
 title: Designer Studio
-version: '0.1.4'
+version: '0.1.5'
 summary: Create images from a brief and keep them in a workspace Design Library. Refining a Library image in chat needs host support.
 needs:
   connections: []
@@ -87,6 +87,10 @@ An older or unsupported host shows a plain unavailable state, never a sample
 image, synthetic receipt or provider URL. Current text-only assistant runtimes
 need an operator-selected admitted image-capable runtime; this app grants no
 model/provider authority and installs no separate skill or autonomous agent.
+
+Opening an image asks the board for its own drawer (`screen-surfaces.v1`); a host
+without it shows the same details in the app's panel. New design stays in the
+app's frame so an open paid run is never forgotten when a drawer closes.
 
 Hosted AgenticOS status (checked 2026-11-23): the host accepts the chat
 attach but refuses to send a message carrying it (`media_refs`, AOS-716), does

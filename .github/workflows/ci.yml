@@ -47,6 +47,7 @@ jobs:
       - run: pnpm run typecheck
       - run: node acceptance/image-generation-bridge.mjs
       - run: node acceptance/original-download-bridge.mjs
+      - run: node acceptance/drawer-surface-bridge.mjs
       - run: pnpm run build
       - run: node scripts/package-screen.mjs
       - name: Verify committed package bytes and provenance

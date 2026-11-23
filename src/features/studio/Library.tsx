@@ -1,14 +1,18 @@
 import { useMemo, useState } from "react";
 import type { StudioActor, StudioAsset, StudioHost } from "../../host/port";
-import { describeCreator, formatRelative, isMine } from "./model";
-import type { LibraryKind, LibraryScope } from "./types";
+import { describeCreator, formatRelative, isMine, plural } from "./model";
+import type { LibraryScope } from "./types";
 import { AssetPreview } from "./AssetPreview";
+import { Dropdown } from "./Dropdown";
 
 interface Props {
+  /** `loading`: skeletons and no counts, never an empty state. `unavailable`:
+   *  the screen's notice explains; no grid and no fictional empty library. */
+  status: "loading" | "ready" | "unavailable";
   assets: StudioAsset[];
   actor: StudioActor | null;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (asset: StudioAsset) => void;
   onCreate: () => void;
   createOpen: boolean;
   host: StudioHost;
@@ -16,7 +20,13 @@ interface Props {
   onChooseReference: () => void;
 }
 
-type Sort = "newest" | "title" | "creator";
+type Sort = "newest" | "oldest" | "title" | "creator";
+const SORTS: { value: Sort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "title", label: "Title A–Z" },
+  { value: "creator", label: "Creator" },
+];
 const SCOPES: { id: LibraryScope; label: string }[] = [
   { id: "all", label: "All assets" },
   { id: "library", label: "Workspace library" },
@@ -30,10 +40,9 @@ function initials(name: string): string {
   return (parts.length > 1 ? parts[0][0] + parts.at(-1)![0] : (parts[0] ?? "?").slice(0, 2)).toUpperCase();
 }
 
-export function Library({ assets, actor, selectedId, onSelect, onCreate, createOpen, host, canRefine, onChooseReference }: Props) {
+export function Library({ status, assets, actor, selectedId, onSelect, onCreate, createOpen, host, canRefine, onChooseReference }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<LibraryScope>("all");
-  const [kind, setKind] = useState<LibraryKind>("all");
   const [tag, setTag] = useState("all");
   const [sort, setSort] = useState<Sort>("newest");
 
@@ -51,20 +60,20 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
       if (scope === "library" && a.lifecycle !== "published") return false;
       if (scope === "drafts" && a.lifecycle !== "draft") return false;
       if (scope === "mine" && !isMine(a.creator, actor)) return false;
-      if (kind !== "all" && a.kind !== kind) return false;
       if (tag !== "all" && !a.tags.includes(tag)) return false;
       if (!q) return true;
       return a.title.toLowerCase().includes(q) || a.tags.some((t) => t.toLowerCase().includes(q));
     });
     if (sort === "title") return filtered.slice().sort((a, b) => a.title.localeCompare(b.title));
     if (sort === "creator") return filtered.slice().sort((a, b) => describeCreator(a.creator).localeCompare(describeCreator(b.creator)));
+    if (sort === "oldest") return filtered.slice().sort((a, b) => a.createdAt - b.createdAt);
     return filtered.slice().sort((a, b) => b.createdAt - a.createdAt);
-  }, [assets, actor, kind, query, scope, sort, tag]);
+  }, [assets, actor, query, scope, sort, tag]);
+  const loading = status === "loading";
 
   function clearFilters() {
     setQuery("");
     setScope("all");
-    setKind("all");
     setTag("all");
   }
 
@@ -75,7 +84,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
           <p className="ds-kicker">Media workspace</p>
           <h2 id="ds-library-heading">Design Library</h2>
           <p className="ds-subtitle">
-            {counts.all} assets · {counts.library} in the workspace library · {counts.drafts} drafts
+            {loading ? "Loading the library…" : status === "unavailable" ? "\u00a0" : `${plural(counts.all, "asset")} · ${counts.library} in the workspace library · ${plural(counts.drafts, "draft")}`}
           </p>
         </div>
         <div className="ds-actions">
@@ -95,7 +104,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
             title={item.id === "mine" && !actor ? "The host has not identified the current user." : undefined}
             onClick={() => setScope(item.id)}
           >
-            {item.label} <span className="ds-tab-count">{counts[item.id]}</span>
+            {item.label} <span className="ds-tab-count">{status === "ready" ? counts[item.id] : "–"}</span>
           </button>
         ))}
       </div>
@@ -112,18 +121,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
             aria-label="Search design library"
           />
         </label>
-        <label className="sr-only" htmlFor="ds-library-kind">Filter by kind</label>
-        <select id="ds-library-kind" className="field" value={kind} onChange={(e) => setKind(e.target.value as LibraryKind)}>
-          <option value="all">All kinds</option>
-          <option value="image">Images</option>
-          <option value="video">Videos</option>
-        </select>
-        <label className="sr-only" htmlFor="ds-library-sort">Sort library</label>
-        <select id="ds-library-sort" className="field" value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-          <option value="newest">Newest first</option>
-          <option value="title">Title A–Z</option>
-          <option value="creator">Creator</option>
-        </select>
+        <Dropdown label="Sort library" prefix="Sort" value={sort} options={SORTS} onChange={setSort} />
       </div>
 
       {tags.length > 0 && (
@@ -137,11 +135,23 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
       )}
 
       <div className="ds-gallery-head">
-        <p aria-live="polite">{rows.length} of {assets.length} assets</p>
-        {selectedId === null && rows.length > 0 && <p>Select an asset to inspect</p>}
+        <p aria-live="polite">{status === "ready" ? `${rows.length} of ${plural(counts[scope], "asset")}` : "\u00a0"}</p>
+        {status === "ready" && selectedId === null && rows.length > 0 && <p className="ds-hint-desktop">Select an image to open it</p>}
       </div>
 
-      {rows.length === 0 ? (
+      {status !== "ready" ? (
+        loading ? (
+          <ul className="ds-library-grid" aria-label="Loading design assets" aria-busy="true">
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="ds-skeleton" aria-hidden="true">
+                <span className="ds-skeleton-art" />
+                <span className="ds-skeleton-line" />
+                <span className="ds-skeleton-line is-short" />
+              </li>
+            ))}
+          </ul>
+        ) : null
+      ) : rows.length === 0 ? (
         <div className="ds-empty ds-library-empty">
           {assets.length === 0 ? (
             <>
@@ -167,7 +177,7 @@ export function Library({ assets, actor, selectedId, onSelect, onCreate, createO
                   className="ds-library-card"
                   aria-pressed={asset.id === selectedId}
                   aria-label={`Open ${asset.title}. ${asset.kind === "image" ? "Image" : "Video"}. ${asset.lifecycle === "published" ? "In library" : "Draft"}. ${creator}. ${formatRelative(asset.createdAt)}.${asset.tags.length ? ` Tags: ${asset.tags.join(", ")}.` : ""}`}
-                  onClick={() => onSelect(asset.id)}
+                  onClick={() => onSelect(asset)}
                 >
                   <span className="ds-card-art">
                     <AssetPreview asset={asset} host={host} />

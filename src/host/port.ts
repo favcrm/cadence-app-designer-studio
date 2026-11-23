@@ -134,12 +134,43 @@ export type Receipt =
   | { status: "revision_conflict"; currentRevision: number }
   | { status: "refused"; code: string; text: string };
 
+/** CAD-1777 `screen-surfaces.v1`: the host-assigned role of THIS frame. A host
+ *  without surfaces never says, so the frame stays `primary`. `modal` is true
+ *  while the board's own drawer covers a primary. Presentation only: never a
+ *  permission. */
+export interface StudioSurface {
+  role: "primary" | "drawer" | "canvas";
+  modal: boolean;
+  /** The closed surface idiom a drawer child was opened for. */
+  name?: string;
+}
+
+/** The bounded, non-authoritative pointer a primary hands its drawer child.
+ *  The child re-reads the asset through its own catalog read. */
+export interface DrawerAssetContext {
+  assetId: string;
+  revision: number;
+}
+
+/** `opened`: the board drew its drawer. `refused`: the host said no (fall
+ *  back in-frame for the session). `not_sent`: this frame did not send it
+ *  (busy, disconnected or a bad pointer). `uncertain`: it may have reached
+ *  the host. */
+export type DrawerOpenResult = "opened" | "refused" | "not_sent" | "uncertain";
+
 export interface StudioHost {
   snapshot(): StudioSnapshot;
   subscribe(listener: () => void): () => void;
   submit(intent: StudioIntent): Promise<Receipt>;
   /** Authorized, bounded image bytes, encoded locally; never a provider URL. */
   preview(assetId: string, revision: number): Promise<string | null>;
+  surface(): StudioSurface;
+  /** Primary only: ask the board to open its drawer on one asset. */
+  openDrawer(context: DrawerAssetContext): Promise<DrawerOpenResult>;
+  /** Drawer child only: the context its primary opened it with, or null. */
+  drawerContext(): Promise<DrawerAssetContext | null>;
+  /** Drawer child only: ask the board to close this drawer. */
+  closeDrawer(): void;
 }
 
 /** The only state this build can honestly show before a host adapter exists. */
@@ -149,6 +180,10 @@ export function unavailableHost(reason: string): StudioHost {
     snapshot: () => snapshot,
     subscribe: () => () => {},
     preview: async () => null,
+    surface: () => ({ role: "primary", modal: false }),
+    openDrawer: async () => "refused",
+    drawerContext: async () => null,
+    closeDrawer: () => {},
     submit: async (intent) => ({
       status: "refused",
       code: "studio_unavailable",

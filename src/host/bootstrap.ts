@@ -9,10 +9,20 @@
  * in `actions`; the frame calls only those, with closed arguments. The parent
  * holds the action token, session and creator, so the frame sends none of
  * them. Refine in chat only queues an image in the host composer.
+ *
+ * DSN-14: the frame also opts into `screen-surfaces.v1`. The host then tells it
+ * whether it is the `primary` list frame or a `drawer` child the board mounted
+ * in its own drawer, and whether a drawer currently covers the primary. The
+ * drawer verbs are host-local presentation only (never a media permission):
+ * a primary may ask `screen.drawer.open` with a bounded `{asset_id, revision}`
+ * pointer, a drawer child may read it back (`screen.drawer.context`) and close
+ * itself. The child re-reads the asset through its own catalog read.
  */
 import {
   NO_CAPABILITIES,
   unavailableHost,
+  type DrawerAssetContext,
+  type DrawerOpenResult,
   type Receipt,
   type StudioActor,
   type StudioAsset,
@@ -21,6 +31,7 @@ import {
   type StudioIntent,
   type StudioRunState,
   type StudioSnapshot,
+  type StudioSurface,
 } from "./port";
 import { IMAGE_MODEL, MAX_PROMPT, isVisiblePrompt } from "../features/studio/model";
 
@@ -77,6 +88,9 @@ const NATIVE_REQUEST_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RUN_ID = /^run-[0-9a-f]{32}$/;
 const RUN_STATES: StudioRunState[] = ["awaiting_approval", "approved", "running", "succeeded", "failed", "cancelled"];
 const GEN_UNCERTAIN = "We could not confirm this generation with Cadence. Check the library before trying again."
+/** The closed drawer surface this app opens, and the host's surface-name grammar. */
+const DRAWER_SURFACE = "asset";
+const SURFACE_NAME = /^[a-z0-9_-]{1,64}$/;
 
 type Refusal = { code: string; text: string };
 /** `lost` means the call may have reached the host: a timeout, a closed port,
@@ -145,6 +159,9 @@ export function connectFrameHost(): StudioHost {
   // Thumbnails, the picker and the detail drawer share the bounded call queue.
   // Serialize preview reads so a large Library cannot overflow the host's eight calls.
   let previewTail: Promise<void> = Promise.resolve();
+  /** Host-assigned role. A host without `screen-surfaces.v1` never sends one,
+   *  so the frame stays primary and the in-frame panels remain the fallback. */
+  let surfaceState: StudioSurface = { role: "primary", modal: false };
 
   function derive(): StudioSnapshot {
     if (closedReason) return { status: "unavailable", reason: closedReason };
@@ -204,7 +221,10 @@ export function connectFrameHost(): StudioHost {
     dl.resolve(receipt);
   }
 
-  function call(verb: "media.read" | "media.publish" | "media.chat.attach", args: Record<string, unknown>): Promise<Outcome> {
+  function call(
+    verb: "media.read" | "media.publish" | "media.chat.attach" | "screen.drawer.open" | "screen.drawer.close" | "screen.drawer.context",
+    args: Record<string, unknown>,
+  ): Promise<Outcome> {
     if (closedReason) return Promise.resolve({ ok: false, refusal: NOT_SENT });
     if (pending.size >= CALLS_IN_FLIGHT_MAX) return Promise.resolve({ ok: false, refusal: BUSY });
     callSeq += 1;
@@ -335,6 +355,10 @@ export function connectFrameHost(): StudioHost {
       onPush(data);
       return;
     }
+    if (data.op === "surface" && data.v === 1) {
+      onSurface(data);
+      return;
+    }
     if (data.op === "reply" && data.v === 2 && typeof data.id === "string" && pending.has(data.id)) {
       if (data.ok === true) settle(data.id, { ok: true, data: data.data });
       else if (data.ok === false && isRefusal(data.refusal)) settle(data.id, { ok: false, refusal: data.refusal });
@@ -429,6 +453,63 @@ export function connectFrameHost(): StudioHost {
     }
     uncertain();
   }
+  /** One host surface push. A malformed one is ignored (presentation only, it
+   *  never widens rights). When a drawer stops covering the primary, the
+   *  primary re-reads the catalog so a publish made in the drawer shows. */
+  function onSurface(data: Record<string, unknown>): void {
+    const keys = Object.keys(data).filter((k) => k !== "v" && k !== "op");
+    if (keys.some((k) => k !== "role" && k !== "modal" && k !== "surface" && k !== "readOnly")) return;
+    if (data.role !== "primary" && data.role !== "drawer" && data.role !== "canvas") return;
+    if (typeof data.modal !== "boolean") return;
+    if (data.surface !== undefined && (typeof data.surface !== "string" || !SURFACE_NAME.test(data.surface))) return;
+    const wasModal = surfaceState.modal;
+    surfaceState = { role: data.role, modal: data.modal, ...(typeof data.surface === "string" ? { name: data.surface } : {}) };
+    if (surfaceState.role === "primary" && wasModal && !surfaceState.modal &&
+        scope && verbs.has("media.read") && !loadInFlight && !closedReason) {
+      startLoad();
+    }
+    refresh();
+  }
+
+  /** Primary only: ask the board for its drawer on one asset. The context is a
+   *  bounded pointer, never authority; the child re-reads the asset. */
+  async function openDrawer(context: DrawerAssetContext): Promise<DrawerOpenResult> {
+    if (closedReason || !scope || surfaceState.role !== "primary") return "not_sent";
+    if (!PUBLISH_ASSET_ID.test(context.assetId) || !isCount(context.revision, 1)) return "not_sent";
+    const outcome = await call("screen.drawer.open", {
+      surface: DRAWER_SURFACE,
+      size: "wide",
+      context: { asset_id: context.assetId, revision: context.revision },
+    });
+    if (outcome.ok) {
+      const reply = record(outcome.data);
+      return reply?.mode === "drawer" ? "opened" : "uncertain";
+    }
+    if ("refusal" in outcome) {
+      // BUSY / NOT_SENT are this frame's own local refusals, not the host's.
+      return outcome.refusal.code === BUSY.code || outcome.refusal.code === NOT_SENT.code ? "not_sent" : "refused";
+    }
+    return "uncertain";
+  }
+
+  /** Drawer child only: read back the pointer its primary opened it with. */
+  async function drawerContext(): Promise<DrawerAssetContext | null> {
+    if (closedReason || surfaceState.role !== "drawer") return null;
+    const outcome = await call("screen.drawer.context", {});
+    if (!outcome.ok) return null;
+    const context = record(record(outcome.data)?.context);
+    if (!context || Object.keys(context).sort().join() !== "asset_id,revision") return null;
+    if (typeof context.asset_id !== "string" || !PUBLISH_ASSET_ID.test(context.asset_id) || !isCount(context.revision, 1)) return null;
+    return { assetId: context.asset_id, revision: context.revision };
+  }
+
+  /** Drawer child only: ask the board to close this drawer. Fire and forget:
+   *  the board's own close control stays available if this is lost. */
+  function closeDrawer(): void {
+    if (closedReason || surfaceState.role !== "drawer") return;
+    void call("screen.drawer.close", {});
+  }
+
   port.onmessageerror = () => closeWith("port_error");
   // Node reports a closed peer as a close event; browsers never fire it, so
   // there a lost port is still settled by the reply timeouts.
@@ -442,7 +523,7 @@ export function connectFrameHost(): StudioHost {
     boot.parent_origin,
     [channel.port2],
   );
-  port.postMessage({ v: 1, op: "ready", accepts: ["screen.v2", "screen-media.v1"] });
+  port.postMessage({ v: 1, op: "ready", accepts: ["screen.v2", "screen-media.v1", "screen-surfaces.v1"] });
 
   async function submit(intent: StudioIntent): Promise<Receipt> {
     if (intent.kind === "generate") return submitGenerate(intent);
@@ -625,6 +706,10 @@ export function connectFrameHost(): StudioHost {
     },
     submit,
     preview,
+    surface: () => surfaceState,
+    openDrawer,
+    drawerContext,
+    closeDrawer,
   };
 }
 

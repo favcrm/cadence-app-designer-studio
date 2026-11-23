@@ -1,66 +1,77 @@
-import { useEffect, useRef, useState } from "react";
-import type { StudioHost } from "../../host/port";
+import { useEffect, useState } from "react";
+import type { DrawerAssetContext, StudioAsset, StudioHost, StudioSnapshot } from "../../host/port";
 import { AssetDetail } from "./AssetDetail";
 import { CreatePanel } from "./CreatePanel";
 import { Library } from "./Library";
 import { describeCreator } from "./model";
 import { useStudio } from "./state";
-import type { StudioAsset } from "../../host/port";
 import { ReferencePicker } from "./ReferencePicker";
 import "./studio.css";
 
-/** Designer Studio app surface. The host shell and chat stay outside this frame. */
-export function DesignerStudio({ host }: { host: StudioHost }) {
-  const studio = useStudio(host);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // Attachment feedback is attempt-scoped and bound to the exact asset
-  // revision the host reported. A later attempt, capability loss or a catalog
-  // change must not leave the previous success or refusal standing.
-  type AttachmentFeedback = { kind: "success" | "error"; text: string; assetId: string; revision: number; contextKey: string };
-  const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
-  const refineAttempt = useRef(0);
-  const pendingAttempt = useRef<{ attempt: number; assetId: string; revision: number; contextKey: string } | null>(null);
-  const snapshot = studio.snapshot;
-  const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
-  const waiting = reason === "awaiting_host" || reason === "catalog_loading";
-  let unavailableText = "Designer Studio could not confirm its connection to Cadence. Reopen this screen; if this continues, ask an operator to check the host connection.";
+const WAITING = new Set(["awaiting_host", "catalog_loading"]);
+
+/** Plain text for an unavailable screen. Loading states have none: the
+ *  Library shows skeletons instead of a notice that pushes content down. */
+function unavailableText(reason: string): string {
   switch (reason) {
-    case "awaiting_host":
-      unavailableText = "Waiting for Cadence to connect this screen… Reopen Designer Studio if this continues; ask an operator to check the host connection.";
-      break;
-    case "catalog_loading":
-      unavailableText = "Loading the workspace catalog from Cadence.";
-      break;
     case "media_read_not_advertised":
-      unavailableText = "Cadence has not confirmed workspace catalog access for this screen. Ask an operator to check the host capability setup.";
-      break;
+      return "Cadence has not confirmed workspace catalog access for this screen. Ask an operator to check the host capability setup.";
     case "unsupported_host":
-      unavailableText = "This screen needs a newer Cadence host. Ask an operator to check the host version and app compatibility.";
-      break;
+      return "This screen needs a newer Cadence host. Ask an operator to check the host version and app compatibility.";
     case "invalid_reply":
     case "lost_invalid_reply":
     case "repeated_cursor":
     case "malformed_push":
-      unavailableText = "Designer Studio received an invalid catalog or connection response from Cadence. Reopen this screen; if this continues, ask an operator to check host and app version compatibility.";
-      break;
+      return "Designer Studio received an invalid catalog or connection response from Cadence. Reopen this screen; if this continues, ask an operator to check host and app version compatibility.";
     case "scope_changed":
-      unavailableText = "The Cadence installation or app version changed. Reopen Designer Studio.";
-      break;
+      return "The Cadence installation or app version changed. Reopen Designer Studio.";
     case "closed":
     case "port_closed":
     case "port_error":
     case "unloaded":
-      unavailableText = "The connection to Cadence closed or could not be read. Reopen Designer Studio.";
-      break;
+      return "The connection to Cadence closed or could not be read. Reopen Designer Studio.";
     default:
-      if (reason?.startsWith("refused_")) {
-        unavailableText = "Cadence refused the connection or workspace catalog read. Ask an operator to check host setup; if this continues, check that the host is reachable and compatible.";
-      } else if (reason?.startsWith("lost_")) {
-        unavailableText = "The workspace catalog read could not be confirmed. Reopen Designer Studio; if this continues, ask an operator to investigate the connection.";
-      }
+      if (reason.startsWith("refused_")) return "Cadence refused the connection or workspace catalog read. Ask an operator to check host setup; if this continues, check that the host is reachable and compatible.";
+      if (reason.startsWith("lost_")) return "The workspace catalog read could not be confirmed. Reopen Designer Studio; if this continues, ask an operator to investigate the connection.";
+      return "Designer Studio could not confirm its connection to Cadence. Reopen this screen; if this continues, ask an operator to check the host connection.";
   }
+}
+
+/** Attach one retained image to the host chat composer. Returns null on a
+ *  confirmed attach (the composer chip is the feedback; no in-app banner) or
+ *  the text to show when it was refused or could not be confirmed. */
+async function attachToChat(host: StudioHost, snapshot: StudioSnapshot, asset: StudioAsset): Promise<string | null> {
+  const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
+  if (!canRefine || asset.kind !== "image") return "Refine in chat is not available: Cadence has not confirmed image chat on this host.";
+  try {
+    const receipt = await host.submit({ kind: "refine_in_chat", assetId: asset.id, revision: asset.revision });
+    if (receipt.status === "chat_attached" && receipt.assetId === asset.id && receipt.revision === asset.revision) return null;
+    if (receipt.status === "refused" || receipt.status === "uncertain") return receipt.text;
+    if (receipt.status === "revision_conflict") return "This image changed. Choose its current version before attaching.";
+  } catch {
+    // The handoff may have reached the host. Do not claim nothing happened.
+  }
+  return "Could not confirm attachment. Check the chat composer before trying again.";
+}
+
+/** Designer Studio app surface. The host shell, its drawer and chat stay outside this frame. */
+export function DesignerStudio({ host }: { host: StudioHost }) {
+  const studio = useStudio(host);
+  // The surface role is read on every render; the host's surface push
+  // refreshes the snapshot store, so a role change re-renders this tree.
+  return host.surface().role === "drawer" ? <DrawerDetail host={host} snapshot={studio.snapshot} /> : <Primary host={host} studio={studio} />;
+}
+
+function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof useStudio> }) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // `try` asks the board for its drawer; a refusal (older host, or no drawer
+  // capability on this mount) falls back to the in-frame panel for this session.
+  const [drawerMode, setDrawerMode] = useState<"try" | "inframe">("try");
+  const snapshot = studio.snapshot;
+  const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
+  const status = snapshot.status === "ready" ? "ready" : reason && WAITING.has(reason) ? "loading" : "unavailable";
 
   const assets = snapshot.status === "ready" ? snapshot.assets : [];
   const jobs = snapshot.status === "ready" ? snapshot.jobs : [];
@@ -70,93 +81,36 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
   const contextKey = snapshot.status === "ready" ? snapshot.conversationContext : "";
-  // Clear stored feedback, not just the derived display, when its asset leaves
-  // the current catalog. Otherwise a late success could reappear after the
-  // same id/revision returns.
-  useEffect(() => {
-    if (!attachmentFeedback) return;
-    if (!canRefine || attachmentFeedback.contextKey !== contextKey ||
-        !assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision)) {
-      setAttachmentFeedback(null);
-    }
-  }, [attachmentFeedback, assets, canRefine, contextKey]);
-
-  // A pending attempt ends when its exact catalog entry disappears, even if a
-  // later refresh restores the same id/revision. A capability loss invalidates
-  // every in-flight handoff, including one whose success arrives while the
-  // affordance is hidden.
-  useEffect(() => {
-    const pending = pendingAttempt.current;
-    if (pending && (pending.contextKey !== contextKey ||
-        !assets.some((a) => a.id === pending.assetId && a.revision === pending.revision))) {
-      pendingAttempt.current = null;
-      refineAttempt.current += 1;
-      setAttachmentFeedback(null);
-    }
-    if (!canRefine) {
-      pendingAttempt.current = null;
-      refineAttempt.current += 1;
-      setAttachmentFeedback(null);
-    }
-  }, [assets, canRefine, contextKey]);
 
   function openCreation() {
     setSelectedId(null);
     setCreateOpen(true);
   }
 
-  function selectAsset(id: string) {
+  async function openAsset(asset: StudioAsset) {
     setCreateOpen(false);
-    setSelectedId(id);
-  }
-
-  async function refine(asset: StudioAsset): Promise<string | null | undefined> {
-    const attempt = ++refineAttempt.current;
-    const current = () => refineAttempt.current === attempt;
-    const attemptContext = contextKey;
-    setAttachmentFeedback(null);
-    const fail = (text: string) => {
-      if (current()) setAttachmentFeedback({ kind: "error", text, assetId: asset.id, revision: asset.revision, contextKey: attemptContext });
-      return text;
-    };
-    if (!canRefine || asset.kind !== "image") return fail("Refine in chat is not available: Cadence has not confirmed image chat on this host.");
-    const { id, revision } = asset;
-    pendingAttempt.current = { attempt, assetId: id, revision, contextKey: attemptContext };
-    const settle = () => { if (pendingAttempt.current?.attempt === attempt) pendingAttempt.current = null; };
-    try {
-      const receipt = await host.submit({ kind: "refine_in_chat", assetId: id, revision });
-      if (!current()) return undefined;
-      settle();
-      if (receipt.status === "chat_attached" && receipt.assetId === id && receipt.revision === revision) {
-        setAttachmentFeedback({ kind: "success", text: "Image attached in chat. Describe your changes and send when ready.", assetId: id, revision, contextKey: attemptContext });
-        return null;
+    if (drawerMode === "try" && host.surface().role === "primary") {
+      const result = await host.openDrawer({ assetId: asset.id, revision: asset.revision });
+      if (result === "opened") {
+        setSelectedId(null);
+        return;
       }
-      if (receipt.status === "refused" || receipt.status === "uncertain") return fail(receipt.text);
-      if (receipt.status === "revision_conflict") return fail("This image changed. Choose its current version before attaching.");
-    } catch {
-      // The handoff may have reached the host. Do not claim nothing happened.
+      // Only the host's own refusal means "no board drawer here" for the
+      // session; a local not-sent or an unconfirmed open falls back once.
+      if (result === "refused") setDrawerMode("inframe");
     }
-    settle();
-    return current() ? fail("Could not confirm attachment. Check the chat composer before trying again.") : undefined;
+    setSelectedId(asset.id);
   }
 
   return (
     <main className="studio" aria-label="Designer Studio">
-      {snapshot.status === "unavailable" && (
-        <p className={waiting ? "ds-note" : "ds-note ds-warn"} role="status">
-          {unavailableText}
-        </p>
-      )}
-      {attachmentFeedback && canRefine && attachmentFeedback.contextKey === contextKey &&
-        assets.some((a) => a.id === attachmentFeedback.assetId && a.revision === attachmentFeedback.revision) && (
-        <p className={attachmentFeedback.kind === "success" ? "ds-note ds-ok" : "ds-note ds-warn"} role={attachmentFeedback.kind === "success" ? "status" : "alert"}>
-          {attachmentFeedback.text}
-        </p>
+      {status === "unavailable" && reason && (
+        <p className="ds-note ds-warn" role="status">{unavailableText(reason)}</p>
       )}
 
       <div className={`ds-library${createOpen || selected ? " ds-pane-present" : ""}`}>
         <div className="ds-canvas">
-          <Library assets={assets} actor={actor} selectedId={selectedId} onSelect={selectAsset} onCreate={openCreation} createOpen={createOpen} host={host} canRefine={canRefine} onChooseReference={() => setPickerOpen(true)} />
+          <Library status={status} assets={assets} actor={actor} selectedId={selectedId} onSelect={(asset) => void openAsset(asset)} onCreate={openCreation} createOpen={createOpen} host={host} canRefine={canRefine} onChooseReference={() => setPickerOpen(true)} />
           {jobs.length > 0 && (
             <ul className="ds-jobs" aria-label="Jobs">
               {jobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {describeCreator(j.creator)}. {j.note}</li>)}
@@ -164,28 +118,20 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
           )}
         </div>
         {createOpen && (
-          <aside className="drawer ds-drawer" aria-labelledby="ds-new-creation-heading">
-            <header className="dhead">
-              <h3 id="ds-new-creation-heading">New creation</h3>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreateOpen(false)} aria-label="Close creation drawer">Close</button>
-            </header>
-            <div className="dbody ds-drawer-body">
-              <CreatePanel
-                draft={studio.draft}
-                setDraft={studio.setDraft}
-                problems={studio.problems}
-                phase={studio.phase}
-                busy={studio.busy}
-                canSubmit={studio.canSubmit}
-                onRequest={studio.requestGeneration}
-                canRefine={canRefine}
-                onChooseReference={() => setPickerOpen(true)}
-              />
-            </div>
-            <div className="dfoot">
-              <p className="ds-hint">Closing keeps your draft and does not cancel a pending request.</p>
-            </div>
-          </aside>
+          <CreatePanel
+            draft={studio.draft}
+            setDraft={studio.setDraft}
+            problems={studio.problems}
+            phase={studio.phase}
+            busy={studio.busy}
+            generateAvailable={studio.generateAvailable}
+            locked={studio.locked}
+            onRequest={studio.requestGeneration}
+            onStartOver={studio.startOver}
+            canRefine={canRefine}
+            onChooseReference={() => setPickerOpen(true)}
+            onClose={() => setCreateOpen(false)}
+          />
         )}
         {selected && (
           <AssetDetail
@@ -197,13 +143,78 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
             host={host}
             canRefine={canRefine}
             sourceAssets={assets}
-            onRefine={refine}
+            onRefine={(asset) => attachToChat(host, snapshot, asset)}
             onClose={() => setSelectedId(null)}
           />
         )}
       </div>
       {pickerOpen && snapshot.status === "ready" && canRefine && (
-        <ReferencePicker key={contextKey} assets={assets} host={host} onChoose={refine} onClose={() => setPickerOpen(false)} />
+        <ReferencePicker key={contextKey} assets={assets} host={host} onChoose={(asset) => attachToChat(host, snapshot, asset)} onClose={() => setPickerOpen(false)} />
+      )}
+    </main>
+  );
+}
+
+/** The board-drawer child: renders only the detail its primary opened. The
+ *  open context is a pointer, never authority: the asset is re-read from this
+ *  frame's own catalog and must still be the same revision. */
+function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSnapshot }) {
+  const [context, setContext] = useState<DrawerAssetContext | null | "loading">("loading");
+  // The opened revision is checked once, when the asset first resolves. After
+  // that the drawer follows the asset by id, so this frame's own confirmed
+  // publish (revision + 1) stays visible instead of reading as a conflict.
+  const [verified, setVerified] = useState<"pending" | "ok" | "stale">("pending");
+  const connected = snapshot.status === "ready";
+  useEffect(() => {
+    if (!connected || context !== "loading") return;
+    let live = true;
+    void host.drawerContext().then((value) => { if (live) setContext(value); });
+    return () => { live = false; };
+  }, [connected, context, host]);
+
+  const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
+  let message: string | null = null;
+  let asset: StudioAsset | null = null;
+  if (reason && !WAITING.has(reason)) message = unavailableText(reason);
+  else if (snapshot.status !== "ready" || context === "loading") message = "Loading this image…";
+  else if (context === null) message = "This image could not be opened here. Close this panel and open it again from the Library.";
+  else {
+    asset = snapshot.assets.find((a) => a.id === context.assetId) ?? null;
+    const state = verified === "pending" && asset ? (asset.revision === context.revision ? "ok" : "stale") : verified;
+    if (!asset) message = "This image is no longer in the Library.";
+    else if (state === "stale") {
+      message = "This image changed since you opened it. Close this panel and open it again from the Library.";
+      asset = null;
+    }
+  }
+  const firstAsset = context !== "loading" && context !== null && snapshot.status === "ready"
+    ? snapshot.assets.find((a) => a.id === context.assetId) ?? null : null;
+  useEffect(() => {
+    if (verified !== "pending" || !firstAsset || context === "loading" || context === null) return;
+    setVerified(firstAsset.revision === context.revision ? "ok" : "stale");
+  }, [verified, firstAsset, context]);
+
+  return (
+    <main className="studio ds-in-drawer" aria-label="Designer Studio image details">
+      {asset && snapshot.status === "ready" ? (
+        <AssetDetail
+          chrome="host"
+          asset={asset}
+          canPublish={snapshot.capabilities.publish}
+          canDownload={snapshot.capabilities.download}
+          canRefine={snapshot.capabilities.refineInChat}
+          lineageJobs={[]}
+          host={host}
+          sourceAssets={snapshot.assets}
+          onRefine={async (target) => {
+            const error = await attachToChat(host, snapshot, target);
+            // Attached: close the drawer so the chat composer is in view.
+            if (error === null) host.closeDrawer();
+            return error;
+          }}
+        />
+      ) : (
+        <p className={message === "Loading this image…" ? "ds-note" : "ds-note ds-warn"} role="status">{message}</p>
       )}
     </main>
   );
