@@ -1,0 +1,9 @@
+{
+  "name": "designer-studio-publisher",
+  "private": true,
+  "type": "module",
+  "description": "Catalogue publisher tooling. Kept out of the root package so the screen bundle's toolchain provenance is unchanged.",
+  "dependencies": {
+    "yaml": "2.8.1"
+  }
+}
