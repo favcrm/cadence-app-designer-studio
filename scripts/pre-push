@@ -7,6 +7,7 @@ checks() {
   pnpm run typecheck &&
   node acceptance/image-generation-bridge.mjs &&
   node acceptance/original-download-bridge.mjs &&
+  node acceptance/drawer-surface-bridge.mjs &&
   pnpm run build &&
   node scripts/package-screen.mjs &&
   cadence app check package --json &&
