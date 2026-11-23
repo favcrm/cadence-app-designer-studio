@@ -79,6 +79,13 @@ an operator pushes the tag. Tagging, installation on a tenant (owner consent),
 capability binding and any paid generation are separate human decisions.
 Listing is not installation.
 
+`v*` tags are protected by two repository tag rulesets (DSN-12):
+`release tags v*: create` lets only repository admins create a `v*` tag, and
+`release tags v*: immutable` refuses moving, force-updating or deleting one,
+with no bypass. A published version is therefore never re-pointed: fix
+forward with a new version. Inspect them with
+`gh api repos/favcrm/cadence-app-designer-studio/rulesets`.
+
 ### Declared host contracts — DSN-9
 
 `app.md` declares `needs.requires.contracts: {app-screens: [1]}`, the only
