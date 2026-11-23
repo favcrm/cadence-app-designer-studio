@@ -1,8 +1,8 @@
 ---
 app: designer-studio
 title: Designer Studio
-version: '0.1.3'
-summary: Create an image or refine an authorized Library image in chat, with native model and price review before any generation.
+version: '0.1.4'
+summary: Create images from a brief and keep them in a workspace Design Library. Refining a Library image in chat needs host support.
 needs:
   connections: []
   requires:
@@ -17,7 +17,7 @@ needs:
       resource_kind: connection_account
       effect: draft
 listing:
-  tagline: Create images. Refine them in chat.
+  tagline: Create images from a brief.
   icon: assets/designer-studio.svg
   category: marketing
   tags:
@@ -25,11 +25,11 @@ listing:
     - image
   publisher:
     name: Cadence
-  about: Designer Studio creates images from one creative brief and can attach a retained Library image to the existing workspace chat. A compatible host must advertise image previews and chat references, supply real image context to an admitted image-capable assistant, and review the exact reference, edit instructions, supported model and price before approval. Refinement retains a new image linked to the unchanged original. Video is not supported. This source candidate is not an installation or operational acceptance claim.
+  about: Designer Studio creates one image per creative brief through the bound image capability. Before any paid run, the host shows the price and asks you to approve it. Results are kept as drafts in the workspace Design Library, with previews and original download. Refine in chat attaches a Library image to the workspace chat; sending it to the assistant and running a reference edit need host support, and on hosts without it the image can be attached but not sent. Video is not supported.
   can:
-    - Create one image from one frozen brief when the image capability is bound
-    - Keep the generated image as a draft in the workspace
-    - Attach a retained image to chat and prepare a reference edit when the host supports it
+    - Create one image from one brief when the image capability is bound
+    - Keep generated images as drafts in the Design Library, with previews and original download
+    - Attach a Library image to chat for refinement where the host supports it
   screenshots: []
   setup:
     - slot: image
@@ -40,13 +40,13 @@ listing:
   i18n:
     zh-TW:
       title: 設計工作室
-      tagline: 建立圖像，並在對話中精修。
-      summary: 建立圖像，或在對話中精修已授權的圖庫圖像；任何生成前，模型與價格都會先經原生審閱。
-      about: 設計工作室依一份創意簡報建立圖像，並可將已保留的圖庫圖像附加到現有的工作區對話。相容的主機須宣告支援圖像預覽與對話引用，為已獲准入且具圖像能力的助理提供真實圖像脈絡，並在核准前檢視確切的參考圖、編輯指示、支援的模型與價格。精修會保留一張連結到未變更原圖的新圖像。不支援影片。此原始碼候選版本並非安裝或營運驗收的聲明。
+      tagline: 依創意簡報建立圖像。
+      summary: 依創意簡報建立圖像，並保留在工作區設計圖庫中。在對話中精修圖庫圖像需要主機支援。
+      about: 設計工作室透過已綁定的圖像功能，每份創意簡報建立一張圖像。任何付費執行前，主機都會先顯示價格並請求核准。結果以草稿形式保留在工作區設計圖庫，可預覽及下載原始檔。「Refine in chat」（在對話中精修）會將圖庫圖像附加到工作區對話；將圖像傳送給助理並執行參考編輯需要主機支援，在不支援的主機上，圖像可以附加但無法傳送。不支援影片。
       can:
-        - 綁定圖像功能後，依一份鎖定的簡報建立一張圖像
-        - 將產生的圖像以草稿形式保留在工作區
-        - 在主機支援時，將已保留的圖像附加到對話並準備參考編輯
+        - 綁定圖像功能後，依一份簡報建立一張圖像
+        - 將產生的圖像以草稿形式保留在設計圖庫，可預覽及下載原始檔
+        - 在主機支援時，將圖庫圖像附加到對話以進行精修
       access_notes:
         image: 每次執行產生一張圖像；執行代理無法變更模型、數量或目的地。
 ---
@@ -88,7 +88,10 @@ image, synthetic receipt or provider URL. Current text-only assistant runtimes
 need an operator-selected admitted image-capable runtime; this app grants no
 model/provider authority and installs no separate skill or autonomous agent.
 
-This is source development for DSN-4 / CAD-1482, not a production update.
-Text-to-video and image-to-video remain out of scope (AOS-213). No external
-publication occurs. Source checks, real host/frame Browser QA, independent
-reviews, merge, installation and paid operational acceptance are separate.
+Hosted AgenticOS status (checked 2026-11-23): the host accepts the chat
+attach but refuses to send a message carrying it (`media_refs`, AOS-716), does
+not expose `app-assistant.json` actions such as `media.refine.prepare`, and
+shows the price but not the model on its approve control (AOS-713). Refine in
+chat therefore stops at the attached image there. Create, Library previews and
+original download work. Text-to-video and image-to-video remain out of scope
+(AOS-213). No external publication occurs.
