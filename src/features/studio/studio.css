@@ -279,6 +279,9 @@ html[data-cadence-kit] body {
   color: var(--color-ink-500);
   font-size: var(--text-micro);
 }
+/* DSN-15: the creator truncates; the age never wraps mid-word. */
+.studio .ds-card-creator { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio .ds-card-age { flex: none; white-space: nowrap; }
 .studio .ds-avatar {
   display: grid;
   place-items: center;

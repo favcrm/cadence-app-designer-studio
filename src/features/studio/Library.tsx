@@ -190,9 +190,9 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
                     <span className="ds-card-title">{asset.title}</span>
                     <span className="ds-card-byline">
                       <span className="ds-avatar" aria-hidden="true">{initials(creator)}</span>
-                      <span>{creator}</span>
+                      <span className="ds-card-creator">{creator}</span>
                       <span aria-hidden="true">·</span>
-                      <span>{formatRelative(asset.createdAt)}</span>
+                      <span className="ds-card-age">{formatRelative(asset.createdAt)}</span>
                     </span>
                     {asset.tags.length > 0 && (
                       <span className="ds-card-tags">
