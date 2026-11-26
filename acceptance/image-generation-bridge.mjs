@@ -95,7 +95,12 @@ const RUN_ID = 'run-' + 'a'.repeat(32);
 
 const EXPECTED_ARGS = {
   workflow: 'create-image',
-  inputs: { subject: 'Generated image', source: PROMPT },
+  inputs: {
+    subject: 'Generated image',
+    source: PROMPT,
+    model: 'openai/gpt-image-2.5',
+    aspect_ratio: '1:1',
+  },
   request_id: REQ_ID,
 };
 const EXPECTED_INTENT = {
@@ -259,7 +264,12 @@ function makeFixture(cfg = {}) {
       if (!cfg.noMediaReply && /^media\./.test(verb)) {
         st.port.postMessage({
           v: 2, op: 'reply', id: m.id, ok: true,
-          data: { assets: [], next_cursor: null, current_actor: { kind: 'operator' } },
+          data: {
+            assets: [],
+            next_cursor: null,
+            current_actor: { kind: 'operator' },
+            ...(cfg.models ? { models: cfg.models } : {}),
+          },
         });
       } else if (!cfg.noMediaReply) {
         st.port.postMessage({
@@ -473,7 +483,7 @@ async function main() {
   if (!M) { summary(); return; }
 
   {
-    const aspectsOk = eq(M.IMAGE_ASPECTS, ['1:1']);
+    const aspectsOk = eq(M.IMAGE_ASPECTS, ['1:1', '16:9', '9:16', '3:2', '2:3']);
     let tasksOk = false, enabled = null;
     if (Array.isArray(M.TASK_STATUS)) { enabled = M.TASK_STATUS.slice(); tasksOk = eq(enabled, ['image']); }
     else if (M.TASK_STATUS && typeof M.TASK_STATUS === 'object') {
@@ -481,7 +491,7 @@ async function main() {
       enabled = Object.keys(M.TASK_STATUS).filter((k) => en(M.TASK_STATUS[k]));
       tasksOk = eq(enabled, ['image']);
     }
-    check('M1 capability tables: IMAGE_ASPECTS=["1:1"], TASK_STATUS enables image only',
+    check('M1 capability tables: IMAGE_ASPECTS has 5 image aspects, TASK_STATUS enables image only',
       aspectsOk && tasksOk,
       `aspects=${JSON.stringify(M.IMAGE_ASPECTS)} tasks=${JSON.stringify(M.TASK_STATUS)}`);
   }
@@ -521,6 +531,11 @@ async function main() {
     const accepted = rejects.filter(([, d]) => !isInvalid(val(d))).map(([n]) => n);
     check('M8 validate rejects blank/control/Cf/ignorable/overlong prompt',
       accepted.length === 0, `accepted: ${accepted.join(', ')}`);
+    const toggledOn = M.toggleStyleCue('Warm sunset beach', 'Flat illustration');
+    const toggledOff = M.toggleStyleCue(toggledOn, 'Flat illustration');
+    check('M9 toggleStyleCue toggles style phrase idempotently',
+      M.hasStyleCue(toggledOn, 'Flat illustration') && !M.hasStyleCue(toggledOff, 'Flat illustration') && toggledOff === 'Warm sunset beach',
+      JSON.stringify({ toggledOn, toggledOff }));
   }
 
   /* -------------------- H: handshake + positive control ------------------ */
@@ -630,7 +645,7 @@ async function main() {
   if (intent) {
     const cases = [
       ['V1 non-image tasks refused', [{ ...intent, task: 'video' }, { ...intent, task: 'edit' }, { ...intent, task: 'animate-image' }]],
-      ['V2 non-square aspect refused', [{ ...intent, aspectRatio: '16:9' }]],
+      ['V2 unsupported aspect refused', [{ ...intent, aspectRatio: '4:5' }, { ...intent, aspectRatio: '21:9' }]],
       ['V3 references refused', [{ ...intent, references: ['ref-1'] }]],
       ['V4 unknown model refused', [{ ...intent, model: 'openai/not-gpt' }]],
       ['V5 extra/forged intent field refused', [{ ...intent, forged_approval: true }]],
@@ -659,6 +674,30 @@ async function main() {
           `slotMsgs=${v.slotCount()} ${detail.join('|')}`);
       } finally { await v.cleanup(); }
     }
+  }
+
+  /* -------- M-opt: price-free advertised model + 16:9 aspect forwarding --- */
+  if (intent) {
+    const mc = makeFixture({
+      models: [
+        { id: 'openai/gpt-image-2.5', name: 'GPT Image 2.5', is_default: true, chargeMinor: 9, unit_price_micros: 90000 },
+        { id: 'openai/gpt-image-2.5-mini', name: 'GPT Image 2.5 Mini', is_default: false, chargeMinor: 2, unit_price_micros: 20000 },
+      ],
+    });
+    try {
+      const mh = await mc.connect();
+      await waitFor(() => mc.mediaReadCount() >= 1 && mh?.snapshot().status === 'ready', 200);
+      const snap = mh.snapshot();
+      const opts = snap.status === 'ready' ? (snap.models || []) : [];
+      const priceFree = opts.length === 2 && opts.every((m) => !('chargeMinor' in m) && !('unit_price_micros' in m));
+      check('G6 catalog models parsed without pricing fields', priceFree, JSON.stringify(opts));
+      await mc.submit({ ...intent, model: 'openai/gpt-image-2.5-mini', aspectRatio: '16:9' });
+      const sent = await waitFor(() => mc.slotCount() === 1, 100);
+      const slot = mc.lastSlot();
+      check('G7 selected advertised model + 16:9 aspect forwarded in run.start inputs',
+        sent && slot?.args?.inputs?.model === 'openai/gpt-image-2.5-mini' && slot?.args?.inputs?.aspect_ratio === '16:9',
+        JSON.stringify(slot && slot.args));
+    } finally { await mc.cleanup(); }
   }
 
   /* --------------------- L: slot lifecycle scenarios --------------------- */

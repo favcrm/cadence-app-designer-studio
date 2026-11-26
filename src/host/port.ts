@@ -22,7 +22,13 @@
  */
 
 export type Task = "image" | "edit" | "text_to_video" | "image_to_video";
-export type ModelId = "openai/gpt-image-2.5" | "bytedance/seedance-2-5";
+export type ModelId = string;
+
+export interface StudioModelOption {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+}
 
 /** A verified workspace actor. A named user carries the verified board
  *  subject; a local operator is an operator, never a made-up person. */
@@ -105,6 +111,7 @@ export type StudioSnapshot =
       conversationContext: string;
       assets: StudioAsset[];
       jobs: StudioJob[];
+      models?: StudioModelOption[];
     };
 
 export type StudioIntent =
@@ -176,6 +183,8 @@ export interface StudioHost {
   surface(): StudioSurface;
   /** Primary only: ask the board to open its drawer on one asset. */
   openDrawer(context: DrawerAssetContext): Promise<DrawerOpenResult>;
+  /** Primary only: ask the board to open its narrow New design drawer. */
+  openCreateDrawer?(): Promise<DrawerOpenResult>;
   /** Drawer child only: the context its primary opened it with, or null. */
   drawerContext(): Promise<DrawerAssetContext | null>;
   /** Drawer child only: ask the board to close this drawer. */
@@ -192,6 +201,7 @@ export function unavailableHost(reason: string): StudioHost {
     preview: async () => null,
     surface: () => ({ role: "primary", modal: false }),
     openDrawer: async () => "refused",
+    openCreateDrawer: async () => "refused",
     drawerContext: async () => null,
     closeDrawer: () => {},
     submit: async (intent) => ({

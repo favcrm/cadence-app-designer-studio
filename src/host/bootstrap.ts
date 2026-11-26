@@ -30,11 +30,12 @@ import {
   type StudioHost,
   type StudioIntent,
   type StudioJob,
+  type StudioModelOption,
   type StudioRunState,
   type StudioSnapshot,
   type StudioSurface,
 } from "./port";
-import { IMAGE_MODEL, MAX_PROMPT, isVisiblePrompt } from "../features/studio/model";
+import { IMAGE_ASPECTS, IMAGE_MODEL, MAX_PROMPT, MODEL_ID_RE, isVisiblePrompt } from "../features/studio/model";
 
 interface Boot {
   tag: string;
@@ -93,9 +94,13 @@ const NATIVE_REQUEST_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RUN_ID = /^run-[0-9a-f]{32}$/;
 const RUN_STATES: StudioRunState[] = ["awaiting_approval", "approved", "running", "succeeded", "failed", "cancelled"];
 const GEN_UNCERTAIN = "We could not confirm this generation with Cadence. Check the library before trying again."
-/** The closed drawer surface this app opens, and the host's surface-name grammar. */
+/** The closed drawer surfaces this app opens, and the host's surface-name grammar. */
 const DRAWER_SURFACE = "asset";
+const CREATE_DRAWER_SURFACE = "create";
 const SURFACE_NAME = /^[a-z0-9_-]{1,64}$/;
+const DEFAULT_IMAGE_MODELS: StudioModelOption[] = [
+  { id: IMAGE_MODEL, name: "GPT Image 2.5", isDefault: true },
+];
 
 type Refusal = { code: string; text: string };
 /** `lost` means the call may have reached the host: a timeout, a closed port,
@@ -104,7 +109,7 @@ type Outcome = { ok: true; data: unknown } | { ok: false; refusal: Refusal } | {
 type Catalog =
   | { kind: "none" }
   | { kind: "failed"; reason: string }
-  | { kind: "ready"; assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor };
+  | { kind: "ready"; assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor; models: StudioModelOption[] };
 
 /** Connect to the host, or report why this build cannot reach one. */
 export function connectFrameHost(): StudioHost {
@@ -191,6 +196,7 @@ export function connectFrameHost(): StudioHost {
       conversationContext,
       assets: catalog.assets,
       jobs: catalog.jobs,
+      models: catalog.models,
     };
   }
 
@@ -250,9 +256,10 @@ export function connectFrameHost(): StudioHost {
 
   /** Every catalog page, in order. A repeated cursor or a malformed page is an
    *  invalid reply: the catalog is never shown partly or as a fictional empty. */
-  async function readCatalog(): Promise<{ assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor } | string> {
+  async function readCatalog(): Promise<{ assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor; models: StudioModelOption[] } | string> {
     const assets: StudioAsset[] = [];
     let jobs: StudioJob[] = [];
+    let models: StudioModelOption[] = DEFAULT_IMAGE_MODELS;
     const ids = new Set<string>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
@@ -270,13 +277,17 @@ export function connectFrameHost(): StudioHost {
       if (cursor === undefined && Array.isArray(page?.jobs)) {
         jobs = page.jobs.map((row) => parseJob(row, actor)).filter((job): job is StudioJob => job !== null);
       }
+      if (cursor === undefined && Array.isArray(page?.models)) {
+        const parsedModels = parseModels(page.models);
+        if (parsedModels.length > 0) models = parsedModels;
+      }
       for (const row of rows) {
         const asset = parseAsset(row);
         if (!asset || ids.has(asset.id)) return "invalid_reply";
         ids.add(asset.id);
         assets.push(asset);
       }
-      if (next === null) return { assets, jobs, actor };
+      if (next === null) return { assets, jobs, actor, models };
       if (cursors.has(next)) return "repeated_cursor";
       cursors.add(next);
       cursor = next;
@@ -325,7 +336,7 @@ export function connectFrameHost(): StudioHost {
         catalog = { kind: "failed", reason: result };
         clearPoll();
       } else {
-        catalog = { kind: "ready", assets: result.assets, jobs: result.jobs, actor: result.actor };
+        catalog = { kind: "ready", assets: result.assets, jobs: result.jobs, actor: result.actor, models: result.models };
         if (activeRunId !== null) {
           const matched = result.jobs.find((job) => job.id === activeRunId);
           if (matched && (matched.state === "ready" || matched.state === "failed")) {
@@ -567,6 +578,23 @@ export function connectFrameHost(): StudioHost {
     return "uncertain";
   }
 
+  /** Primary only: ask the board for its narrow New design drawer. */
+  async function openCreateDrawer(): Promise<DrawerOpenResult> {
+    if (closedReason || !scope || surfaceState.role !== "primary") return "not_sent";
+    const outcome = await call("screen.drawer.open", {
+      surface: CREATE_DRAWER_SURFACE,
+      size: "narrow",
+    });
+    if (outcome.ok) {
+      const reply = record(outcome.data);
+      return reply?.mode === "drawer" ? "opened" : "uncertain";
+    }
+    if ("refusal" in outcome) {
+      return outcome.refusal.code === BUSY.code || outcome.refusal.code === NOT_SENT.code ? "not_sent" : "refused";
+    }
+    return "uncertain";
+  }
+
   /** Drawer child only: read back the pointer its primary opened it with. */
   async function drawerContext(): Promise<DrawerAssetContext | null> {
     if (closedReason || surfaceState.role !== "drawer") return null;
@@ -720,7 +748,12 @@ export function connectFrameHost(): StudioHost {
     const id = `g${genSeq}-${randomHex(6)}`;
     const args = {
       workflow: "create-image",
-      inputs: { subject: "Generated image", source: prompt },
+      inputs: {
+        subject: "Generated image",
+        source: prompt,
+        model: intent.model,
+        aspect_ratio: intent.aspectRatio,
+      },
       request_id: requestId,
     };
     return new Promise<Receipt>((resolve) => {
@@ -770,18 +803,23 @@ export function connectFrameHost(): StudioHost {
     });
   }
 
-  /** The image-only generation gate: the intent is the closed 8-key shape
-   *  — task image, the admitted image model, square, 1K, no references —
-   *  with a nonempty visible prompt and a native request id. Anything else,
-   *  including an extra forged field, refuses BEFORE any slot op is sent. */
+  /** Image generation gate: closed 8-key shape validated against advertised
+   *  models, supported image aspect ratios, and a visible prompt + native
+   *  request id BEFORE any slot op is sent. */
   function generateIntentOk(intent: StudioIntent): boolean {
     if (intent.kind !== "generate") return false;
     const keys = Object.keys(intent).sort().join();
     if (keys !== "aspectRatio,kind,model,prompt,references,requestId,resolution,task") return false;
+    const currentModels = catalog.kind === "ready" ? catalog.models : DEFAULT_IMAGE_MODELS;
+    const allowedModel =
+      typeof intent.model === "string" &&
+      MODEL_ID_RE.test(intent.model) &&
+      currentModels.some((entry) => entry.id === intent.model);
+    const allowedAspect = IMAGE_ASPECTS.includes(intent.aspectRatio as (typeof IMAGE_ASPECTS)[number]);
     return (
       intent.task === "image" &&
-      intent.model === IMAGE_MODEL &&
-      intent.aspectRatio === "1:1" &&
+      allowedModel &&
+      allowedAspect &&
       intent.resolution === "1K" &&
       Array.isArray(intent.references) && intent.references.length === 0 &&
       typeof intent.requestId === "string" && NATIVE_REQUEST_ID.test(intent.requestId) &&
@@ -807,6 +845,7 @@ export function connectFrameHost(): StudioHost {
     preview,
     surface: () => surfaceState,
     openDrawer,
+    openCreateDrawer,
     drawerContext,
     closeDrawer,
   };
@@ -843,6 +882,25 @@ function isRefusal(value: unknown): value is Refusal {
 
 function isCount(value: unknown, min: number): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= min;
+}
+
+/** Price-free image model options from catalog page 1; strips any unknown or pricing fields. */
+function parseModels(rows: unknown[]): StudioModelOption[] {
+  const seen = new Set<string>();
+  const out: StudioModelOption[] = [];
+  for (const row of rows) {
+    const m = record(row);
+    if (!m || typeof m.id !== "string" || !MODEL_ID_RE.test(m.id)) continue;
+    if (typeof m.name !== "string" || m.name.trim().length === 0 || m.name.length > 80) continue;
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push({
+      id: m.id,
+      name: m.name.trim(),
+      ...(typeof m.is_default === "boolean" ? { isDefault: m.is_default } : {}),
+    });
+  }
+  return out;
 }
 
 /** A verified current actor, or null for any other shape. */

@@ -1,7 +1,7 @@
 ---
 app: designer-studio
 title: Designer Studio
-version: '0.1.7'
+version: '0.1.8'
 summary: Create images from a brief, track live generation progress, compare lineage, and refine selected images in chat.
 needs:
   connections: []

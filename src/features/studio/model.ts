@@ -1,13 +1,13 @@
-import type { ModelId, StudioActor, StudioAsset, StudioCreator, StudioIntent, Task } from "../../host/port";
+import type { ModelId, StudioActor, StudioAsset, StudioCreator, StudioIntent, StudioModelOption, Task } from "../../host/port";
 import type { CreateDraft, ImageAspect, VideoAspect, VideoDuration, VideoResolution } from "./types";
 
-/** Limits copied from the admitted platform inference schema (AgenticOS main
- *  3b935dd8): gpt-image-2.5 and seedance-2-5 only. A limit missing from the
- *  real contract is a blocker, not a value this form invents. */
+export const MODEL_ID_RE = /^[a-z0-9][a-z0-9._-]{0,31}\/[a-z0-9][a-z0-9._:-]{0,63}$/i;
 export const IMAGE_MODEL: ModelId = "openai/gpt-image-2.5";
 export const VIDEO_MODEL: ModelId = "bytedance/seedance-2-5";
-/** DSN-1: the native image bridge admits the square aspect only. */
-export const IMAGE_ASPECTS: ImageAspect[] = ["1:1"];
+export const DEFAULT_IMAGE_MODELS: StudioModelOption[] = [
+  { id: IMAGE_MODEL, name: "GPT Image 2.5", isDefault: true },
+];
+export const IMAGE_ASPECTS: ImageAspect[] = ["1:1", "16:9", "9:16", "3:2", "2:3"];
 export const VIDEO_ASPECTS: VideoAspect[] = ["16:9", "9:16", "1:1", "auto"];
 export const VIDEO_DURATIONS: VideoDuration[] = [4, 6, 8, 10];
 export const VIDEO_RESOLUTIONS: VideoResolution[] = ["480p", "720p", "1080p"];
@@ -56,14 +56,21 @@ export function isVisiblePrompt(text: string): boolean {
 }
 
 /** Problems a person must fix before a paid submit may even be offered. */
-export function validate(draft: CreateDraft): string[] {
+export function validate(draft: CreateDraft, allowedModels?: readonly StudioModelOption[]): string[] {
   const problems: string[] = [];
   if (!TASK_STATUS[draft.task].enabled) problems.push(TASK_STATUS[draft.task].reason ?? "This task is not available.");
   const prompt = draft.prompt.trim();
   if (prompt.length === 0) problems.push("Write a brief to continue.");
   if (draft.prompt.length > MAX_PROMPT) problems.push(`Keep the brief to ${MAX_PROMPT} characters.`);
   if (prompt.length > 0 && !isVisiblePrompt(prompt)) problems.push("The brief has invisible or control characters; use plain visible text.");
-  if (draft.task === "image" && draft.imageAspect !== "1:1") problems.push("Image generation is square only here.");
+  if (draft.task === "image" && !IMAGE_ASPECTS.includes(draft.imageAspect)) {
+    problems.push("Choose a supported aspect ratio.");
+  }
+  if (draft.task === "image") {
+    const validModelId = typeof draft.model === "string" && MODEL_ID_RE.test(draft.model);
+    const matchesList = !allowedModels || allowedModels.length === 0 || allowedModels.some((m) => m.id === draft.model);
+    if (!validModelId || !matchesList) problems.push("Choose an available model.");
+  }
   if (draft.references.length > 0) problems.push("This generation task takes no reference images.");
   return problems;
 }
@@ -75,7 +82,7 @@ export function toIntent(draft: CreateDraft, requestId: string): StudioIntent {
   const intent: StudioIntent = {
     kind: "generate" as const,
     task: (draft.task === "edit" ? "edit" : video ? "text_to_video" : "image") as Exclude<Task, "image_to_video">,
-    model: modelFor(draft.task),
+    model: video ? modelFor(draft.task) : draft.model,
     prompt: draft.prompt.trim(),
     aspectRatio: video ? draft.videoAspect : draft.imageAspect,
     resolution: video ? draft.videoResolution : "1K",
@@ -137,9 +144,50 @@ export function formatAbsolute(epoch: number): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(epoch);
 }
 
-/** Style phrases a person may append to a brief. Text only: they change the
- *  brief, never the model, size or price. */
+/** Style phrases a person may append to or toggle in a brief. Text only: they
+ *  change the brief, never the model, size or price. */
 export const STYLE_CHIPS = ["Flat illustration", "Photograph", "3D render", "Minimal line art", "Watercolour", "Plain white background", "No text"] as const;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function splitStyleClauses(brief: string): string[] {
+  return brief
+    .split(/\s*(?:[.,;]+)\s*/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/** Whether `brief` already carries the given style cue as a distinct phrase. */
+export function hasStyleCue(brief: string, phrase: string): boolean {
+  const target = phrase.trim().toLowerCase();
+  if (!target) return false;
+  return splitStyleClauses(brief).includes(target);
+}
+
+/** Toggle one style cue cleanly as a comma/sentence phrase within `MAX_PROMPT`. */
+export function toggleStyleCue(brief: string, phrase: string): string {
+  const target = phrase.trim();
+  if (!target) return brief;
+  if (hasStyleCue(brief, target)) {
+    const escaped = escapeRegex(target);
+    const cleaned = brief
+      .replace(new RegExp(`(?:^|[.,;]+\\s*)${escaped}(?=\\s*(?:[.,;]+|$))`, "ig"), "")
+      .replace(/^\s*[.,;]+\s*/, "")
+      .replace(/\s*([.,;])\s*([.,;])+/g, "$1 ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    return cleaned;
+  }
+  const base = brief.trimEnd().replace(/[,;]+$/, "").trimEnd();
+  if (base.length === 0) {
+    return target.length <= MAX_PROMPT ? target : brief;
+  }
+  const sep = /[.!?]$/.test(base) ? " " : ", ";
+  const joined = `${base}${sep}${target}`;
+  return joined.length <= MAX_PROMPT ? joined : brief;
+}
 
 /** Append one style phrase as its own sentence, within the brief limit. */
 export function appendStyle(brief: string, phrase: string): string {

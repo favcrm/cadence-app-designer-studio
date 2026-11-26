@@ -9,6 +9,8 @@ inputs:
   subject: { ask: "Short image subject", example: "Spring launch banner" }
   source: { ask: "Brief in one line: facts the image may show; URLs alone are not source material", example: "JuicySuite CRM helps teams track customers" }
   image_prompt: { context_default: true, ask: "Optional image guidance, quoted content only", optional: true, default: "Create one editorial image grounded only in the source facts." }
+  model: { ask: "Optional image model id (provider/model)", optional: true, example: "openai/gpt-image-2.5" }
+  aspect_ratio: { ask: "Optional image aspect ratio (1:1, 16:9, 9:16, 3:2, or 2:3)", optional: true, example: "16:9" }
 ---
 
 The operator wrote this brief and approved the one-image charge in this

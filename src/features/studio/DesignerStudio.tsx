@@ -57,7 +57,13 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
   const studio = useStudio(host);
   // The surface role is read on every render; the host's surface push
   // refreshes the snapshot store, so a role change re-renders this tree.
-  return host.surface().role === "drawer" ? <DrawerDetail host={host} snapshot={studio.snapshot} /> : <Primary host={host} studio={studio} />;
+  const surface = host.surface();
+  if (surface.role === "drawer") {
+    return surface.name === "create"
+      ? <DrawerCreate host={host} studio={studio} />
+      : <DrawerDetail host={host} snapshot={studio.snapshot} />;
+  }
+  return <Primary host={host} studio={studio} />;
 }
 
 function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof useStudio> }) {
@@ -72,6 +78,7 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
 
   const assets = snapshot.status === "ready" ? snapshot.assets : [];
   const jobs = snapshot.status === "ready" ? snapshot.jobs : [];
+  const activeJobs = jobs.filter((j) => j.state === "queued" || j.state === "running");
   const actor = snapshot.status === "ready" ? snapshot.currentActor : null;
   const selected = assets.find((a) => a.id === selectedId) ?? null;
   const canGenerate = snapshot.status === "ready" && snapshot.capabilities.generate;
@@ -81,8 +88,16 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
   const settledAssetId = studio.phase.kind === "completed" ? studio.phase.assetId : undefined;
   const settledAsset = settledAssetId ? assets.find((a) => a.id === settledAssetId) ?? null : null;
 
-  function openCreation() {
+  async function openCreation() {
     setSelectedId(null);
+    if (drawerMode === "try" && host.surface().role === "primary" && host.openCreateDrawer) {
+      const result = await host.openCreateDrawer();
+      if (result === "opened") {
+        setCreateOpen(false);
+        return;
+      }
+      if (result === "refused") setDrawerMode("inframe");
+    }
     setCreateOpen(true);
   }
 
@@ -116,8 +131,8 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
             actor={actor}
             selectedId={selectedId}
             onSelect={(asset) => void openAsset(asset)}
-            onSelectJob={openCreation}
-            onCreate={openCreation}
+            onSelectJob={() => void openCreation()}
+            onCreate={() => void openCreation()}
             onRefresh={() => host.refresh()}
             createOpen={createOpen}
             host={host}
@@ -137,6 +152,8 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
             locked={studio.locked}
             host={host}
             settledAsset={settledAsset}
+            models={studio.models}
+            activeJobs={activeJobs}
             onRequest={studio.requestGeneration}
             onStartOver={studio.startOver}
             onOpenAsset={(target) => {
@@ -166,6 +183,39 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
   );
 }
 
+/** Host drawer child for `surface="create"`: renders New design inside the board drawer. */
+function DrawerCreate({ host, studio }: { host: StudioHost; studio: ReturnType<typeof useStudio> }) {
+  const snapshot = studio.snapshot;
+  const assets = snapshot.status === "ready" ? snapshot.assets : [];
+  const jobs = snapshot.status === "ready" ? snapshot.jobs : [];
+  const activeJobs = jobs.filter((j) => j.state === "queued" || j.state === "running");
+  const settledAssetId = studio.phase.kind === "completed" ? studio.phase.assetId : undefined;
+  const settledAsset = settledAssetId ? assets.find((a) => a.id === settledAssetId) ?? null : null;
+
+  return (
+    <main className="studio ds-in-drawer" aria-label="New design">
+      <CreatePanel
+        chrome="host"
+        draft={studio.draft}
+        setDraft={studio.setDraft}
+        problems={studio.problems}
+        phase={studio.phase}
+        busy={studio.busy}
+        generateAvailable={studio.generateAvailable}
+        locked={studio.locked}
+        host={host}
+        settledAsset={settledAsset}
+        models={studio.models}
+        activeJobs={activeJobs}
+        onRequest={studio.requestGeneration}
+        onStartOver={studio.startOver}
+        onOpenAsset={() => host.closeDrawer()}
+        onClose={() => host.closeDrawer()}
+      />
+    </main>
+  );
+}
+
 /** The board-drawer child: renders only the detail its primary opened. The
  *  open context is a pointer, never authority: the asset is re-read from this
  *  frame's own catalog and must still be the same revision. */
@@ -185,14 +235,16 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
   }, [connected, context, host]);
 
   const reason = snapshot.status === "unavailable" ? snapshot.reason : null;
+  const hasBlockingReason = Boolean(reason && !WAITING.has(reason));
+  const loading = !hasBlockingReason && (snapshot.status !== "ready" || context === "loading");
   let message: string | null = null;
   let asset: StudioAsset | null = null;
   if (reason && !WAITING.has(reason)) message = unavailableText(reason);
-  else if (snapshot.status !== "ready" || context === "loading") message = "Loading this image…";
+  else if (snapshot.status !== "ready" || context === "loading") message = null;
   else if (context === null) message = "This image could not be opened here. Close this panel and open it again from the Library.";
   else {
     const targetId = overrideAssetId ?? context.assetId;
-    asset = snapshot.assets.find((a) => a.id === targetId) ?? null;
+    asset = snapshot.status === "ready" ? snapshot.assets.find((a) => a.id === targetId) ?? null : null;
     if (!asset) message = "This image is no longer in the Library.";
     else if (overrideAssetId === null) {
       const state = verified === "pending" ? (asset.revision === context.revision ? "ok" : "stale") : verified;
@@ -219,7 +271,7 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
           canPublish={snapshot.capabilities.publish}
           canDownload={snapshot.capabilities.download}
           canRefine={snapshot.capabilities.refineInChat}
-          lineageJobs={[]}
+          lineageJobs={snapshot.jobs.filter((j) => j.assetId === asset.id)}
           host={host}
           sourceAssets={snapshot.assets}
           onSelectAsset={(target) => setOverrideAssetId(target.id)}
@@ -230,8 +282,17 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
             return error;
           }}
         />
+      ) : loading ? (
+        <div className="ds-host-detail ds-detail-skeleton" aria-busy="true" aria-label="Loading image details">
+          <div className="ds-host-detail-body">
+            <span className="ds-skeleton-art ds-detail-skeleton-art" />
+            <span className="ds-skeleton-line" />
+            <span className="ds-skeleton-line is-short" />
+            <span className="ds-skeleton-line" />
+          </div>
+        </div>
       ) : (
-        <p className={message === "Loading this image…" ? "ds-note" : "ds-note ds-warn"} role="status">{message}</p>
+        <p className="ds-note ds-warn" role="status">{message}</p>
       )}
     </main>
   );

@@ -364,6 +364,32 @@ html[data-cadence-kit] body {
 .studio .ds-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .studio .ds-chips .chip { cursor: pointer; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--color-edge); border-radius: 999px; background: transparent; color: var(--color-ink-300); font: var(--text-label)/1 var(--font-sans); }
 .studio .ds-chips .chip:hover { border-color: var(--color-edge-hover); color: var(--color-ink-100); }
+.studio .ds-chips .chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-edge));
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+}
+.studio .ds-model-select .ds-dropdown,
+.studio .ds-model-select .select-trigger { width: 100%; }
+.studio .ds-aspect-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.studio .ds-aspect-pill {
+  appearance: none;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--color-edge);
+  border-radius: .375rem;
+  background: transparent;
+  color: var(--color-ink-300);
+  font: 500 var(--text-label)/1 var(--font-mono);
+  cursor: pointer;
+}
+.studio .ds-aspect-pill:hover { border-color: var(--color-edge-hover); color: var(--color-ink-100); }
+.studio .ds-aspect-pill[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-ink-100);
+}
+.studio .ds-detail-skeleton-art { max-width: 320px; aspect-ratio: 4 / 3; }
 .studio .ds-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .studio .ds-fact { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--color-edge); border-radius: .5rem; }
 .studio .ds-fact strong { color: var(--color-ink-100); font-weight: 500; font-size: var(--text-secondary); }
