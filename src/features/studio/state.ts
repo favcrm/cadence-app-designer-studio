@@ -18,6 +18,7 @@ export type Phase =
   | { kind: "completed"; runId?: string; assetId?: string }
   | { kind: "generation_failed" }
   | { kind: "cancelled" }
+  | { kind: "dismissed" }
   | { kind: "saved" };
 
 /** Feature state: the draft the person edits, and the host receipt for the
@@ -158,7 +159,7 @@ function fromReceipt(receipt: Receipt): Phase {
     case "revision_conflict":
       return { kind: "conflict", currentRevision: receipt.currentRevision };
     case "refused":
-      if (receipt.code === "cancelled" || receipt.code === "user_cancelled") return { kind: "cancelled" };
+      if (receipt.code === "cancelled" || receipt.code === "user_cancelled") return { kind: "dismissed" };
       return { kind: "refused", text: receipt.text };
   }
 }

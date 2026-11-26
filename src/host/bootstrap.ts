@@ -35,7 +35,7 @@ import {
   type StudioSnapshot,
   type StudioSurface,
 } from "./port";
-import { IMAGE_ASPECTS, IMAGE_MODEL, MAX_PROMPT, MODEL_ID_RE, isVisiblePrompt } from "../features/studio/model";
+import { DEFAULT_IMAGE_MODELS, IMAGE_ASPECTS, MAX_PROMPT, MODEL_ID_RE, isVisiblePrompt } from "../features/studio/model";
 
 interface Boot {
   tag: string;
@@ -98,9 +98,6 @@ const GEN_UNCERTAIN = "We could not confirm this generation with Cadence. Check 
 const DRAWER_SURFACE = "asset";
 const CREATE_DRAWER_SURFACE = "create";
 const SURFACE_NAME = /^[a-z0-9_-]{1,64}$/;
-const DEFAULT_IMAGE_MODELS: StudioModelOption[] = [
-  { id: IMAGE_MODEL, name: "GPT Image 2.5", isDefault: true },
-];
 
 type Refusal = { code: string; text: string };
 /** `lost` means the call may have reached the host: a timeout, a closed port,
@@ -720,11 +717,9 @@ export function connectFrameHost(): StudioHost {
     });
   }
 
-  /** The image-only run.start slot. Every value the wire carries is captured
-   *  before the send: the prompt and request id come from the validated
-   *  intent, never a mutable draft. `image_prompt` is omitted so the
-   *  installed workflow's own default applies; no model, aspect, quote,
-   *  approval, provider, price, session or creator selector crosses. */
+  /** The image-only `run.start` slot. Every wire value is captured once before
+   *  send: `subject`, trimmed visible `source` prompt, advertised `model`,
+   *  supported `aspect_ratio`, and native `request_id` (no price/approval fields). */
   function submitGenerate(intent: StudioIntent): Promise<Receipt> {
     const refuse = (code: string, text: string): Promise<Receipt> =>
       Promise.resolve({ status: "refused", code, text });

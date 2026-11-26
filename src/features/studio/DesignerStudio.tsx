@@ -209,7 +209,6 @@ function DrawerCreate({ host, studio }: { host: StudioHost; studio: ReturnType<t
         activeJobs={activeJobs}
         onRequest={studio.requestGeneration}
         onStartOver={studio.startOver}
-        onOpenAsset={() => host.closeDrawer()}
         onClose={() => host.closeDrawer()}
       />
     </main>
@@ -283,7 +282,7 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
           }}
         />
       ) : loading ? (
-        <div className="ds-host-detail ds-detail-skeleton" aria-busy="true" aria-label="Loading image details">
+        <div className="ds-host-detail ds-detail-skeleton" role="status" aria-busy="true" aria-label="Loading image details">
           <div className="ds-host-detail-body">
             <span className="ds-skeleton-art ds-detail-skeleton-art" />
             <span className="ds-skeleton-line" />

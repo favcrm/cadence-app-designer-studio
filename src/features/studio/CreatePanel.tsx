@@ -23,7 +23,7 @@ interface Props {
   chrome?: "inframe" | "host";
   onRequest: () => void;
   onStartOver: () => void;
-  onOpenAsset: (asset: StudioAsset) => void;
+  onOpenAsset?: (asset: StudioAsset) => void;
   onClose: () => void;
 }
 
@@ -56,7 +56,7 @@ export function CreatePanel(props: Props) {
     (phase.kind !== "idle" &&
       phase.kind !== "refused" &&
       phase.kind !== "conflict" &&
-      phase.kind !== "cancelled");
+      phase.kind !== "dismissed");
 
   function submit() {
     if (problems.length > 0) {
@@ -139,7 +139,7 @@ export function CreatePanel(props: Props) {
 
       <div className="ds-create-field">
         <div className="ds-create-label">
-          <span id="ds-model-label">Model</span>
+          <span>Model</span>
           <span>Image generator</span>
         </div>
         <div className="ds-model-select">
@@ -172,7 +172,7 @@ export function CreatePanel(props: Props) {
         </div>
       </div>
 
-      {phase.kind === "cancelled" && (
+      {phase.kind === "dismissed" && (
         <p className="ds-note" role="status">Cancelled — nothing was started.</p>
       )}
       {phase.kind === "refused" && <p className="ds-note ds-warn" role="alert">{phase.text}</p>}
@@ -188,7 +188,7 @@ export function CreatePanel(props: Props) {
       ) : null}
       <span className="ds-grow" />
       {!locked && <button type="button" className="btn btn-sm" onClick={() => { setTried(false); props.onStartOver(); }}>Start another</button>}
-      {phase.kind === "completed" && settledAsset ? (
+      {phase.kind === "completed" && settledAsset && onOpenAsset ? (
         <button type="button" className="btn btn-primary btn-sm" onClick={() => onOpenAsset(settledAsset)}>Open details</button>
       ) : (
         <button type="button" className="btn btn-primary btn-sm" onClick={props.onClose}>Done</button>
@@ -214,6 +214,9 @@ export function CreatePanel(props: Props) {
   if (chrome === "host") {
     return (
       <section className="ds-host-detail ds-create" aria-label="New design">
+        <header className="ds-host-detail-head">
+          <p>One image from one brief</p>
+        </header>
         <div className="ds-host-detail-body">{body}</div>
         <footer className="ds-host-detail-foot ds-create-foot">{foot}</footer>
       </section>
@@ -250,7 +253,7 @@ function Progress({
   brief: string;
   host: StudioHost;
   settledAsset: StudioAsset | null;
-  onOpenAsset: (asset: StudioAsset) => void;
+  onOpenAsset?: (asset: StudioAsset) => void;
 }) {
   const waiting = busy || phase.kind === "awaiting_host";
   const running = phase.kind === "pending";
@@ -275,17 +278,24 @@ function Progress({
       {brief && <blockquote className="ds-quote">{brief}</blockquote>}
       {finished && settledAsset && (
         <div className="ds-result-preview">
-          <button
-            type="button"
-            className="ds-library-card"
-            onClick={() => onOpenAsset(settledAsset)}
-            aria-label={`Open ${settledAsset.title}`}
-          >
-            <span className="ds-card-art">
+          {onOpenAsset ? (
+            <button
+              type="button"
+              className="ds-library-card"
+              onClick={() => onOpenAsset(settledAsset)}
+              aria-label={`Open ${settledAsset.title}`}
+            >
+              <span className="ds-card-art">
+                <AssetPreview asset={settledAsset} host={host} />
+                <span className="ds-card-badge">Draft</span>
+              </span>
+            </button>
+          ) : (
+            <div className="ds-card-art">
               <AssetPreview asset={settledAsset} host={host} />
               <span className="ds-card-badge">Draft</span>
-            </span>
-          </button>
+            </div>
+          )}
           <div className="ds-result-meta">
             <strong>{settledAsset.title}</strong>
             <span>Ready in your Library as a draft</span>

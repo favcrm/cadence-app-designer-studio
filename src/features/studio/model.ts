@@ -154,7 +154,7 @@ function escapeRegex(value: string): string {
 
 function splitStyleClauses(brief: string): string[] {
   return brief
-    .split(/\s*(?:[.,;]+)\s*/)
+    .split(/\s*(?:[.,;!?]+)\s*/)
     .map((part) => part.trim().toLowerCase())
     .filter(Boolean);
 }
@@ -173,9 +173,10 @@ export function toggleStyleCue(brief: string, phrase: string): string {
   if (hasStyleCue(brief, target)) {
     const escaped = escapeRegex(target);
     const cleaned = brief
-      .replace(new RegExp(`(?:^|[.,;]+\\s*)${escaped}(?=\\s*(?:[.,;]+|$))`, "ig"), "")
-      .replace(/^\s*[.,;]+\s*/, "")
-      .replace(/\s*([.,;])\s*([.,;])+/g, "$1 ")
+      .replace(new RegExp(`(^|[!?]+\\s*|[.,;]+\\s*)${escaped}(?=\\s*(?:[.,;!?]+|$))`, "ig"), (_m, lead: string) =>
+        /[!?]/.test(lead) ? lead.trimEnd() : "")
+      .replace(/^\s*[.,;!?]+\s*/, "")
+      .replace(/\s*([.,;!?])\s*([.,;])+/g, "$1 ")
       .replace(/\s{2,}/g, " ")
       .trim();
     return cleaned;
@@ -186,12 +187,5 @@ export function toggleStyleCue(brief: string, phrase: string): string {
   }
   const sep = /[.!?]$/.test(base) ? " " : ", ";
   const joined = `${base}${sep}${target}`;
-  return joined.length <= MAX_PROMPT ? joined : brief;
-}
-
-/** Append one style phrase as its own sentence, within the brief limit. */
-export function appendStyle(brief: string, phrase: string): string {
-  const base = brief.trimEnd();
-  const joined = base.length === 0 ? `${phrase}.` : `${base}${/[.!?]$/.test(base) ? "" : "."} ${phrase}.`;
   return joined.length <= MAX_PROMPT ? joined : brief;
 }

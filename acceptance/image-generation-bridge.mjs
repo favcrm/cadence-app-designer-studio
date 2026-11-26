@@ -533,9 +533,13 @@ async function main() {
       accepted.length === 0, `accepted: ${accepted.join(', ')}`);
     const toggledOn = M.toggleStyleCue('Warm sunset beach', 'Flat illustration');
     const toggledOff = M.toggleStyleCue(toggledOn, 'Flat illustration');
-    check('M9 toggleStyleCue toggles style phrase idempotently',
-      M.hasStyleCue(toggledOn, 'Flat illustration') && !M.hasStyleCue(toggledOff, 'Flat illustration') && toggledOff === 'Warm sunset beach',
-      JSON.stringify({ toggledOn, toggledOff }));
+    const exclOn = M.toggleStyleCue('Warm sunset beach!', 'Flat illustration');
+    const exclOff = M.toggleStyleCue(exclOn, 'Flat illustration');
+    check('M9 toggleStyleCue toggles style phrase idempotently across punctuation',
+      M.hasStyleCue(toggledOn, 'Flat illustration') && !M.hasStyleCue(toggledOff, 'Flat illustration') && toggledOff === 'Warm sunset beach'
+        && exclOn === 'Warm sunset beach! Flat illustration' && M.hasStyleCue(exclOn, 'Flat illustration')
+        && !M.hasStyleCue(exclOff, 'Flat illustration') && exclOff === 'Warm sunset beach!',
+      JSON.stringify({ toggledOn, toggledOff, exclOn, exclOff }));
   }
 
   /* -------------------- H: handshake + positive control ------------------ */
