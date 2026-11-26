@@ -54,7 +54,8 @@ html[data-cadence-kit] body {
 .studio .ds-drawer .field { min-width: 0; max-width: 100%; }
 .studio .ds-jobs { padding-left: 18px; margin: 0; color: var(--color-ink-400); font-size: var(--text-secondary); }
 .studio .ds-prompt { white-space: pre-wrap; color: var(--color-ink-200); }
-.studio .ds-drawer-body { display: grid; flex: 1; overflow-y: auto; gap: 10px; min-width: 0; min-height: 0; align-content: start; }
+.studio .ds-drawer-body { display: flex; flex-direction: column; flex: 1; overflow-y: auto; gap: 10px; min-width: 0; min-height: 0; }
+.studio .ds-drawer-body > * { flex: 0 0 auto; }
 .studio .ds-asset-preview { display: grid; place-items: center; aspect-ratio: 1; width: 100%; overflow: hidden; border-radius: var(--radius-sm, 6px); background: var(--color-ink-900); }
 .studio .ds-asset-preview img { width: 100%; height: 100%; object-fit: contain; }
 .studio .ds-tile .ds-asset-preview img { object-fit: cover; }

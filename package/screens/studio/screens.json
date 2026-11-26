@@ -18,12 +18,12 @@
     {
       "name": "styles.css",
       "media_type": "text/css",
-      "sha256": "sha256:b9688715be7f6f597d6cab74fa1ba10ba55746ae1aaa2fa365eb5eb483140b83",
-      "size": 18205
+      "sha256": "sha256:6ebf1b0747ab2c8e1eaaa79b7c6316eed2f672c1355195f0e66730daca5809d4",
+      "size": 18243
     }
   ],
   "provenance": {
-    "source_digest": "sha256:a3e8f806b9689be5ddf7670f58fae65be85f1d5332a41ebcc2191955a30d088d",
+    "source_digest": "sha256:4d9906c1e8289b738e49a0dff69b81b7393e26f55833f3763b1ea5f42c7fedbf",
     "sdk_digest": "sha256:ac56c2b07f48320cbbc76acc222c4bb50bcac46eba2129950c0ce0f4d2472513",
     "toolchain_digest": "sha256:698f0abca85f727be60f3d296ddae2df25a5c531bd38ffd1ce0289527b0a0f76"
   }
