@@ -19,6 +19,18 @@ function storePreview(host: StudioHost, key: string, url: string): void {
   map.set(key, url);
 }
 
+/** Publishing leaves original bytes unchanged; carry the cached preview URL forward
+ *  to the next revision so the grid and detail card never re-fetch or flicker. */
+export function promotePreviewCache(
+  host: StudioHost,
+  assetId: string,
+  fromRevision: number,
+  toRevision: number,
+): void {
+  const cached = cachedPreview(host, `${assetId}:${fromRevision}`);
+  if (cached) storePreview(host, `${assetId}:${toRevision}`, cached);
+}
+
 /** The host returns authorized image content, never a remotely fetchable URL. */
 export function AssetPreview({ asset, host }: { asset: StudioAsset; host: StudioHost }) {
   const key = `${asset.id}:${asset.revision}`;

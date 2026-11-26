@@ -8,14 +8,14 @@ import type { CreateDraft } from "./types";
 export type Phase =
   | { kind: "idle" }
   | { kind: "awaiting_host" }
-  | { kind: "pending" }
+  | { kind: "pending"; runId?: string }
   | { kind: "uncertain"; text: string }
   | { kind: "conflict"; currentRevision: number }
   | { kind: "refused"; text: string }
   /** A generation run finished: completed, failed or cancelled — truthful,
    *  never "saved" (the refreshed library is the truth) and never
    *  "nothing started/no charge" for a run that reached the host. */
-  | { kind: "completed" }
+  | { kind: "completed"; runId?: string; assetId?: string }
   | { kind: "generation_failed" }
   | { kind: "cancelled" }
   | { kind: "saved" };
@@ -38,6 +38,32 @@ export function useStudio(host: StudioHost) {
       activeIntent.current = null;
     };
   }, []);
+
+  // Correlate an open or completed run receipt with host-projected jobs so
+  // CreatePanel transitions live and attaches the settled asset when ready.
+  useEffect(() => {
+    if (snapshot.status !== "ready") return;
+    if (phase.kind === "pending" && phase.runId) {
+      const job = snapshot.jobs.find((entry) => entry.id === phase.runId);
+      if (!job) return;
+      if (job.state === "ready") {
+        setPhase({
+          kind: "completed",
+          runId: phase.runId,
+          ...(job.assetId ? { assetId: job.assetId } : {}),
+        });
+      } else if (job.state === "failed") {
+        setPhase({ kind: "generation_failed" });
+      }
+      return;
+    }
+    if (phase.kind === "completed" && phase.runId && !phase.assetId) {
+      const job = snapshot.jobs.find((entry) => entry.id === phase.runId);
+      if (job?.assetId) {
+        setPhase({ kind: "completed", runId: phase.runId, assetId: job.assetId });
+      }
+    }
+  }, [phase, snapshot]);
 
   const problems = validate(draft);
   // Uncertain means the host may already have accepted the intent: no new
@@ -102,11 +128,11 @@ function fromReceipt(receipt: Receipt): Phase {
     case "chat_attached":
       return { kind: "refused", text: "This response does not confirm image generation." };
     case "generation_result":
-      if (receipt.state === "succeeded") return { kind: "completed" };
+      if (receipt.state === "succeeded") return { kind: "completed", runId: receipt.runId };
       if (receipt.state === "failed") return { kind: "generation_failed" };
       if (receipt.state === "cancelled") return { kind: "cancelled" };
       // A valid nonterminal run state: the run is real but still open.
-      return { kind: "pending" };
+      return { kind: "pending", runId: receipt.runId };
     case "uncertain":
       return { kind: "uncertain", text: receipt.text };
     case "revision_conflict":

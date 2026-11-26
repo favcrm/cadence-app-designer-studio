@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { StudioActor, StudioAsset, StudioHost } from "../../host/port";
+import type { StudioActor, StudioAsset, StudioHost, StudioJob } from "../../host/port";
 import { describeCreator, formatRelative, isMine, plural } from "./model";
 import type { LibraryScope } from "./types";
 import { AssetPreview } from "./AssetPreview";
@@ -10,14 +10,18 @@ interface Props {
    *  the screen's notice explains; no grid and no fictional empty library. */
   status: "loading" | "ready" | "unavailable";
   assets: StudioAsset[];
+  jobs: StudioJob[];
   actor: StudioActor | null;
   selectedId: string | null;
   onSelect: (asset: StudioAsset) => void;
+  onSelectJob?: () => void;
   onCreate: () => void;
+  onRefresh: () => void;
   createOpen: boolean;
   host: StudioHost;
+  canGenerate: boolean;
+  canPublish: boolean;
   canRefine: boolean;
-  onChooseReference: () => void;
 }
 
 type Sort = "newest" | "oldest" | "title" | "creator";
@@ -28,10 +32,9 @@ const SORTS: { value: Sort; label: string }[] = [
   { value: "creator", label: "Creator" },
 ];
 const SCOPES: { id: LibraryScope; label: string }[] = [
-  { id: "all", label: "All assets" },
+  { id: "all", label: "All" },
   { id: "library", label: "Workspace library" },
-  { id: "mine", label: "Mine" },
-  { id: "drafts", label: "Drafts" },
+  { id: "drafts", label: "My drafts" },
 ];
 
 function initials(name: string): string {
@@ -40,7 +43,22 @@ function initials(name: string): string {
   return (parts.length > 1 ? parts[0][0] + parts.at(-1)![0] : (parts[0] ?? "?").slice(0, 2)).toUpperCase();
 }
 
-export function Library({ status, assets, actor, selectedId, onSelect, onCreate, createOpen, host, canRefine, onChooseReference }: Props) {
+export function Library({
+  status,
+  assets,
+  jobs,
+  actor,
+  selectedId,
+  onSelect,
+  onSelectJob,
+  onCreate,
+  onRefresh,
+  createOpen,
+  host,
+  canGenerate,
+  canPublish,
+  canRefine,
+}: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<LibraryScope>("all");
   const [tag, setTag] = useState("all");
@@ -49,20 +67,31 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
   const counts = useMemo(() => ({
     all: assets.length,
     library: assets.filter((a) => a.lifecycle === "published").length,
-    mine: assets.filter((a) => isMine(a.creator, actor)).length,
-    drafts: assets.filter((a) => a.lifecycle === "draft").length,
+    drafts: assets.filter((a) => a.lifecycle === "draft" && (actor ? isMine(a.creator, actor) : true)).length,
   }), [assets, actor]);
   const tags = useMemo(() => [...new Set(assets.flatMap((a) => a.tags))].sort(), [assets]);
+  const activeJobs = useMemo(
+    () => jobs.filter((job) => job.state === "queued" || job.state === "running"),
+    [jobs],
+  );
+  const memberReadOnly = !canGenerate && !canPublish && !canRefine;
+  const visibleGhostJobs = scope === "library" || memberReadOnly ? [] : activeJobs;
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = assets.filter((a) => {
       if (scope === "library" && a.lifecycle !== "published") return false;
-      if (scope === "drafts" && a.lifecycle !== "draft") return false;
-      if (scope === "mine" && !isMine(a.creator, actor)) return false;
+      if (scope === "drafts") {
+        if (a.lifecycle !== "draft") return false;
+        if (actor && !isMine(a.creator, actor)) return false;
+      }
       if (tag !== "all" && !a.tags.includes(tag)) return false;
       if (!q) return true;
-      return a.title.toLowerCase().includes(q) || a.tags.some((t) => t.toLowerCase().includes(q));
+      return (
+        a.title.toLowerCase().includes(q) ||
+        (a.prompt?.toLowerCase().includes(q) ?? false) ||
+        a.tags.some((t) => t.toLowerCase().includes(q))
+      );
     });
     if (sort === "title") return filtered.slice().sort((a, b) => a.title.localeCompare(b.title));
     if (sort === "creator") return filtered.slice().sort((a, b) => describeCreator(a.creator).localeCompare(describeCreator(b.creator)));
@@ -84,30 +113,38 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
           <p className="ds-kicker">Media workspace</p>
           <h2 id="ds-library-heading">Design Library</h2>
           <p className="ds-subtitle">
-            {loading ? "Loading the library…" : status === "unavailable" ? "\u00a0" : `${plural(counts.all, "asset")} · ${counts.library} in the workspace library · ${plural(counts.drafts, "draft")}`}
+            {loading
+              ? "Loading the library…"
+              : status === "unavailable"
+                ? "\u00a0"
+                : memberReadOnly
+                  ? `${plural(counts.library, "asset")} in the workspace library · View-only`
+                  : `${plural(counts.all, "asset")} · ${counts.library} in the workspace library · ${plural(counts.drafts, "draft")}`}
           </p>
         </div>
         <div className="ds-actions">
-          <button type="button" className="btn btn-sm" disabled={!canRefine} title={canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={onChooseReference}>Refine in chat</button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onCreate} aria-expanded={createOpen}>New design</button>
+          <button type="button" className="btn btn-sm" disabled={loading} onClick={onRefresh} title="Refresh library">Refresh</button>
+          {canGenerate && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={onCreate} aria-expanded={createOpen}>New design</button>
+          )}
         </div>
       </header>
 
-      <div className="ds-tabs" role="group" aria-label="Library scope">
-        {SCOPES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className="ds-tab"
-            aria-pressed={scope === item.id}
-            disabled={item.id === "mine" && !actor}
-            title={item.id === "mine" && !actor ? "The host has not identified the current user." : undefined}
-            onClick={() => setScope(item.id)}
-          >
-            {item.label} <span className="ds-tab-count">{status === "ready" ? counts[item.id] : "–"}</span>
-          </button>
-        ))}
-      </div>
+      {!(memberReadOnly && counts.drafts === 0) && (
+        <div className="ds-tabs" role="group" aria-label="Library scope">
+          {SCOPES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="ds-tab"
+              aria-pressed={scope === item.id}
+              onClick={() => setScope(item.id)}
+            >
+              {item.label} <span className="ds-tab-count">{status === "ready" ? counts[item.id] : "–"}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="ds-toolbar">
         <label className="ds-search">
@@ -117,7 +154,7 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search title or tag"
+            placeholder="Search title, brief or tag"
             aria-label="Search design library"
           />
         </label>
@@ -136,7 +173,11 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
 
       <div className="ds-gallery-head">
         <p aria-live="polite">{status === "ready" ? `${rows.length} of ${plural(counts[scope], "asset")}` : "\u00a0"}</p>
-        {status === "ready" && selectedId === null && rows.length > 0 && <p className="ds-hint-desktop">Select an image to open it</p>}
+        {status === "ready" && selectedId === null && rows.length > 0 && (
+          <p className="ds-hint-desktop">
+            {memberReadOnly ? "Select an image to view or download" : "Select an image to inspect, refine or add to library"}
+          </p>
+        )}
       </div>
 
       {status !== "ready" ? (
@@ -151,12 +192,12 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
             ))}
           </ul>
         ) : null
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && visibleGhostJobs.length === 0 ? (
         <div className="ds-empty ds-library-empty">
           {assets.length === 0 ? (
             <>
-              <strong>No assets yet</strong>
-              <span>Create a design to start building the workspace library.</span>
+              <strong>{memberReadOnly ? "No workspace library assets yet" : "No assets yet"}</strong>
+              <span>{memberReadOnly ? "Published assets added to the workspace library appear here." : "Create a design to start building the workspace library."}</span>
             </>
           ) : (
             <>
@@ -168,6 +209,35 @@ export function Library({ status, assets, actor, selectedId, onSelect, onCreate,
         </div>
       ) : (
         <ul className="ds-library-grid" aria-label="Design assets">
+          {visibleGhostJobs.map((job) => (
+            <li key={job.id}>
+              <button
+                type="button"
+                className="ds-library-card ds-ghost-card"
+                onClick={onSelectJob ?? onCreate}
+                aria-label={`${job.title ?? "New design"} — ${job.state === "queued" ? "Queued" : "Generating"}`}
+              >
+                <span className="ds-card-art">
+                  <span className="ds-ghost-shimmer" aria-hidden="true" />
+                  <span className="ds-card-badge is-generating">
+                    {job.state === "queued" ? "Queued" : "Generating…"}
+                  </span>
+                </span>
+                <span className="ds-card-copy">
+                  <span className="ds-card-title">{job.title ?? "New design"}</span>
+                  <span className="ds-card-byline">
+                    <span className="ds-card-creator">{job.task === "edit" ? "Refining" : "Usually under a minute"}</span>
+                    {job.createdAt ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="ds-card-age">{formatRelative(job.createdAt)}</span>
+                      </>
+                    ) : null}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
           {rows.map((asset) => {
             const creator = describeCreator(asset.creator);
             return (

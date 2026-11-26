@@ -54,7 +54,8 @@ html[data-cadence-kit] body {
 .studio .ds-drawer .field { min-width: 0; max-width: 100%; }
 .studio .ds-jobs { padding-left: 18px; margin: 0; color: var(--color-ink-400); font-size: var(--text-secondary); }
 .studio .ds-prompt { white-space: pre-wrap; color: var(--color-ink-200); }
-.studio .ds-drawer-body { display: grid; flex: 1; overflow-y: auto; gap: 10px; min-width: 0; min-height: 0; align-content: start; }
+.studio .ds-drawer-body { display: flex; flex-direction: column; flex: 1; overflow-y: auto; gap: 10px; min-width: 0; min-height: 0; }
+.studio .ds-drawer-body > * { flex: 0 0 auto; }
 .studio .ds-asset-preview { display: grid; place-items: center; aspect-ratio: 1; width: 100%; overflow: hidden; border-radius: var(--radius-sm, 6px); background: var(--color-ink-900); }
 .studio .ds-asset-preview img { width: 100%; height: 100%; object-fit: contain; }
 .studio .ds-tile .ds-asset-preview img { object-fit: cover; }
@@ -411,6 +412,58 @@ html[data-cadence-kit] body {
   .studio .ds-facts { grid-template-columns: 1fr; }
   .studio .ds-create-foot .ds-hint { flex-basis: 100%; max-width: none; }
 }
+
+/* DSN-16: Generating ghost card, lineage comparison, settled create preview */
+.studio .ds-ghost-card .ds-card-art {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-edge));
+  background: var(--color-ink-900);
+}
+.studio .ds-ghost-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 20%, color-mix(in srgb, var(--color-accent) 10%, transparent) 50%, transparent 80%);
+  background-size: 200% 100%;
+  animation: ds-shimmer 1.6s linear infinite;
+}
+.studio .ds-card-badge.is-generating::before {
+  background: var(--color-accent);
+  animation: ds-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ds-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .45; transform: scale(.8); } }
+
+.studio .ds-compare-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.studio .ds-compare-tabs .chip { cursor: pointer; }
+.studio .ds-compare-tabs .chip[aria-pressed="true"] {
+  color: var(--color-ink-100);
+  border-color: var(--color-accent);
+}
+.studio .ds-compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.studio .ds-compare-figure { margin: 0; display: grid; gap: 4px; }
+.studio .ds-compare-figure figcaption {
+  font: 500 var(--text-micro)/1.2 var(--font-mono);
+  color: var(--color-ink-500);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.studio .ds-lineage-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.studio .ds-lineage-link:hover { color: var(--color-ink-100); }
+
+.studio .ds-result-preview { display: grid; gap: 10px; max-width: 240px; }
+.studio .ds-result-meta { display: grid; gap: 2px; }
+.studio .ds-result-meta strong { color: var(--color-ink-100); font-weight: 500; font-size: var(--text-secondary); }
+.studio .ds-result-meta span { color: var(--color-ink-500); font-size: var(--text-micro); }
+
 @media (prefers-reduced-motion: reduce) {
-  .studio .ds-skeleton-art, .studio .ds-skeleton-line, .studio .ds-step.is-now .ds-step-dot { animation: none; }
+  .studio .ds-skeleton-art, .studio .ds-skeleton-line, .studio .ds-step.is-now .ds-step-dot, .studio .ds-ghost-shimmer, .studio .ds-card-badge.is-generating::before { animation: none; }
 }
