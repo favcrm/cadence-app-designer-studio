@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Receipt, StudioHost, StudioIntent, StudioSnapshot } from "../../host/port";
-import { emptyDraft, toIntent, validate } from "./model";
+import { DEFAULT_IMAGE_MODELS, emptyDraft, toIntent, validate } from "./model";
 import type { CreateDraft } from "./types";
 
 /** What the frame shows about its one most recent intent. The frame never
@@ -18,13 +18,14 @@ export type Phase =
   | { kind: "completed"; runId?: string; assetId?: string }
   | { kind: "generation_failed" }
   | { kind: "cancelled" }
+  | { kind: "dismissed" }
   | { kind: "saved" };
 
 /** Feature state: the draft the person edits, and the host receipt for the
  *  one intent the frame most recently sent. */
 export function useStudio(host: StudioHost) {
   const snapshot: StudioSnapshot = useSyncExternalStore(host.subscribe, host.snapshot, host.snapshot);
-  const [draft, setDraft] = useState<CreateDraft>(() => emptyDraft());
+  const [draft, setDraftState] = useState<CreateDraft>(() => emptyDraft());
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [busy, setBusy] = useState(false);
   // Only the reply to the newest intent may change the screen; an older one
@@ -65,7 +66,26 @@ export function useStudio(host: StudioHost) {
     }
   }, [phase, snapshot]);
 
-  const problems = validate(draft);
+  const models = snapshot.status === "ready" && snapshot.models && snapshot.models.length > 0
+    ? snapshot.models
+    : DEFAULT_IMAGE_MODELS;
+  const defaultModel = models.find((m) => m.isDefault)?.id ?? models[0].id;
+  const modelTouched = useRef(false);
+
+  const setDraft = (next: CreateDraft) => {
+    if (next.model !== draft.model) modelTouched.current = true;
+    setDraftState(next);
+  };
+
+  useEffect(() => {
+    if (snapshot.status !== "ready" || draft.task !== "image") return;
+    const validCurrent = models.some((m) => m.id === draft.model);
+    if (!validCurrent || (!modelTouched.current && draft.model !== defaultModel)) {
+      setDraftState((prev) => ({ ...prev, model: defaultModel }));
+    }
+  }, [snapshot.status, models, defaultModel, draft.task, draft.model]);
+
+  const problems = validate(draft, snapshot.status === "ready" ? models : undefined);
   // Uncertain means the host may already have accepted the intent: no new
   // submit is offered here, and the person checks the library instead.
   const locked = busy || phase.kind === "awaiting_host" || phase.kind === "pending" || phase.kind === "uncertain";
@@ -102,11 +122,12 @@ export function useStudio(host: StudioHost) {
   function startOver() {
     if (locked) return;
     activeIntent.current = null;
+    modelTouched.current = false;
     setPhase({ kind: "idle" });
-    setDraft(emptyDraft());
+    setDraftState({ ...emptyDraft(), model: defaultModel });
   }
 
-  return { snapshot, draft, setDraft, phase, busy, problems, canSubmit, generateAvailable, locked, requestGeneration, startOver };
+  return { snapshot, models, draft, setDraft, phase, busy, problems, canSubmit, generateAvailable, locked, requestGeneration, startOver };
 }
 
 /** Hex request id: works in an opaque-origin frame, where crypto.randomUUID may be absent. */
@@ -138,6 +159,7 @@ function fromReceipt(receipt: Receipt): Phase {
     case "revision_conflict":
       return { kind: "conflict", currentRevision: receipt.currentRevision };
     case "refused":
+      if (receipt.code === "cancelled" || receipt.code === "user_cancelled") return { kind: "dismissed" };
       return { kind: "refused", text: receipt.text };
   }
 }

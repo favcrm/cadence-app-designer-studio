@@ -145,6 +145,12 @@ async function frameChecks() {
     const before = f.calls('screen.drawer.open').length;
     const bad = await f.host.openDrawer({ assetId: 'not-an-asset', revision: 1 });
     check('F6 a malformed pointer is not sent (local not_sent, not a host refusal)', bad === 'not_sent' && f.calls('screen.drawer.open').length === before);
+    mode = 'ok';
+    const created = await f.host.openCreateDrawer();
+    const createSent = f.calls('screen.drawer.open').slice(-1)[0];
+    check('F6b openCreateDrawer sends exactly {surface:"create", size:"narrow"} and returns "opened"',
+      created === 'opened' && !!createSent && JSON.stringify(createSent.args) === JSON.stringify({ surface: 'create', size: 'narrow' }),
+      JSON.stringify({ created, args: createSent && createSent.args }));
     // F7: closing the board drawer (modal true -> false) re-reads the catalog.
     const reads = f.calls('media.read').length;
     f.send({ v: 1, op: 'surface', role: 'primary', modal: true });
@@ -181,7 +187,10 @@ async function frameChecks() {
       JSON.stringify(read));
     ctx = { asset_id: ASSET, revision: 1, extra: true };
     check('F11 a context with extra keys is rejected (null)', (await f.host.drawerContext()) === null);
-    check('F12 a drawer child never opens another drawer (not sent; the host would close the port)', (await f.host.openDrawer({ assetId: ASSET, revision: 1 })) === 'not_sent' && f.calls('screen.drawer.open').length === 0);
+    check('F12 a drawer child never opens another drawer (not sent; the host would close the port)',
+      (await f.host.openDrawer({ assetId: ASSET, revision: 1 })) === 'not_sent' &&
+      (await f.host.openCreateDrawer()) === 'not_sent' &&
+      f.calls('screen.drawer.open').length === 0);
     f.host.closeDrawer();
     check('F13 drawer child close sends screen.drawer.close {}',
       await waitFor(() => f.calls('screen.drawer.close').length === 1) && JSON.stringify(f.calls('screen.drawer.close')[0].args) === '{}');
@@ -207,6 +216,10 @@ async function hostChecks() {
   const parsed = protocol.parseScreenDrawerCall?.('screen.drawer.open', args);
   check('H1 host parser admits the frame\'s exact open arguments',
     !!parsed && parsed.mode === 'drawer' && parsed.surface === 'asset' && parsed.size === 'wide', JSON.stringify(parsed));
+  const createArgs = { surface: 'create', size: 'narrow' };
+  const parsedCreate = protocol.parseScreenDrawerCall?.('screen.drawer.open', createArgs);
+  check('H1b host parser admits narrow create drawer open arguments',
+    !!parsedCreate && parsedCreate.mode === 'drawer' && parsedCreate.surface === 'create' && parsedCreate.size === 'narrow', JSON.stringify(parsedCreate));
   check('H2 the open context is within the host byte bound',
     typeof protocol.drawerContextBytes === 'function' && protocol.drawerContextBytes(args.context) !== null);
 
