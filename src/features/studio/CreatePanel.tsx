@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import type { StudioAsset, StudioHost } from "../../host/port";
+import { AssetPreview } from "./AssetPreview";
 import { MAX_PROMPT, STYLE_CHIPS, appendStyle } from "./model";
 import type { Phase } from "./state";
 import type { CreateDraft } from "./types";
@@ -13,10 +15,11 @@ interface Props {
   generateAvailable: boolean;
   /** A request may still be open: no new submit, no start-over. */
   locked: boolean;
+  host: StudioHost;
+  settledAsset: StudioAsset | null;
   onRequest: () => void;
   onStartOver: () => void;
-  canRefine: boolean;
-  onChooseReference: () => void;
+  onOpenAsset: (asset: StudioAsset) => void;
   onClose: () => void;
 }
 
@@ -28,7 +31,7 @@ const EXAMPLE = "e.g. A flat illustration of a single blue paper airplane on a p
  *  forget an open paid run. The frame never prices or approves: Cadence draws
  *  its own price button, and one press there approves one paid run. */
 export function CreatePanel(props: Props) {
-  const { draft, setDraft, problems, phase, busy, generateAvailable, locked } = props;
+  const { draft, setDraft, problems, phase, busy, generateAvailable, locked, host, settledAsset, onOpenAsset } = props;
   const [tried, setTried] = useState(false);
   const brief = useRef<HTMLTextAreaElement>(null);
   const inProgress = busy || phase.kind !== "idle" && phase.kind !== "refused" && phase.kind !== "conflict";
@@ -55,7 +58,7 @@ export function CreatePanel(props: Props) {
 
       <div className="dbody ds-drawer-body">
         {inProgress ? (
-          <Progress phase={phase} busy={busy} brief={draft.prompt.trim()} />
+          <Progress phase={phase} busy={busy} brief={draft.prompt.trim()} host={host} settledAsset={settledAsset} onOpenAsset={onOpenAsset} />
         ) : (
           <>
             <div className="ds-create-field">
@@ -112,11 +115,6 @@ export function CreatePanel(props: Props) {
               <div className="ds-fact"><strong>One image</strong><span>Saved as a draft in the Library</span></div>
             </div>
 
-            <div className="ds-linkrow">
-              <span>Changing an existing image instead?</span>
-              <button type="button" className="btn btn-sm" disabled={!props.canRefine} title={props.canRefine ? undefined : "Refine in chat is not confirmed on this host."} onClick={props.onChooseReference}>Refine in chat</button>
-            </div>
-
             {phase.kind === "refused" && <p className="ds-note ds-warn" role="alert">{phase.text}</p>}
           </>
         )}
@@ -125,14 +123,22 @@ export function CreatePanel(props: Props) {
       <div className="dfoot ds-create-foot">
         {inProgress ? (
           <>
-            {locked && <p className="ds-hint">Closing keeps the request open; it can't be cancelled from here.</p>}
+            {phase.kind === "pending" ? (
+              <p className="ds-hint">Generating in the background — you can close this drawer and watch progress in the Library grid.</p>
+            ) : locked ? (
+              <p className="ds-hint">Closing keeps the request open; it can't be cancelled from here.</p>
+            ) : null}
             <span className="ds-grow" />
             {!locked && <button type="button" className="btn btn-sm" onClick={() => { setTried(false); props.onStartOver(); }}>Start another</button>}
-            <button type="button" className="btn btn-primary btn-sm" onClick={props.onClose}>Done</button>
+            {phase.kind === "completed" && settledAsset ? (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => onOpenAsset(settledAsset)}>Open details</button>
+            ) : (
+              <button type="button" className="btn btn-primary btn-sm" onClick={props.onClose}>Done</button>
+            )}
           </>
         ) : (
           <>
-            <p className="ds-hint">Next, Cadence shows the price on its own approve button. One press approves and starts one paid run.</p>
+            <p className="ds-hint">Next, Cadence shows the model and price on its own approve bar. One press approves and starts one paid run.</p>
             <span className="ds-grow" />
             <button type="button" className="btn btn-sm" onClick={props.onClose}>Cancel</button>
             <button
@@ -153,7 +159,21 @@ export function CreatePanel(props: Props) {
 
 type StepState = "done" | "now" | "todo" | "failed";
 
-function Progress({ phase, busy, brief }: { phase: Phase; busy: boolean; brief: string }) {
+function Progress({
+  phase,
+  busy,
+  brief,
+  host,
+  settledAsset,
+  onOpenAsset,
+}: {
+  phase: Phase;
+  busy: boolean;
+  brief: string;
+  host: StudioHost;
+  settledAsset: StudioAsset | null;
+  onOpenAsset: (asset: StudioAsset) => void;
+}) {
   const waiting = busy || phase.kind === "awaiting_host";
   const running = phase.kind === "pending";
   const finished = phase.kind === "completed";
@@ -175,6 +195,25 @@ function Progress({ phase, busy, brief }: { phase: Phase; busy: boolean; brief: 
   return (
     <div className="ds-progress">
       {brief && <blockquote className="ds-quote">{brief}</blockquote>}
+      {finished && settledAsset && (
+        <div className="ds-result-preview">
+          <button
+            type="button"
+            className="ds-library-card"
+            onClick={() => onOpenAsset(settledAsset)}
+            aria-label={`Open ${settledAsset.title}`}
+          >
+            <span className="ds-card-art">
+              <AssetPreview asset={settledAsset} host={host} />
+              <span className="ds-card-badge">Draft</span>
+            </span>
+          </button>
+          <div className="ds-result-meta">
+            <strong>{settledAsset.title}</strong>
+            <span>Ready in your Library as a draft</span>
+          </div>
+        </div>
+      )}
       <ol className="ds-steps" aria-label="Request progress">
         {steps.map((step) => (
           <li key={step.title} className={`ds-step is-${step.state}`} aria-current={step.state === "now" ? "step" : undefined}>
@@ -183,15 +222,15 @@ function Progress({ phase, busy, brief }: { phase: Phase; busy: boolean; brief: 
           </li>
         ))}
       </ol>
-      <Outcome phase={phase} />
+      <Outcome phase={phase} hasSettledAsset={finished && settledAsset !== null} />
     </div>
   );
 }
 
-function Outcome({ phase }: { phase: Phase }) {
+function Outcome({ phase, hasSettledAsset }: { phase: Phase; hasSettledAsset: boolean }) {
   switch (phase.kind) {
     case "completed":
-      return <p className="ds-note ds-ok" role="status">Done. The new image is in the Library as a draft.</p>;
+      return hasSettledAsset ? null : <p className="ds-note ds-ok" role="status">Done. The new image is in the Library as a draft.</p>;
     case "generation_failed":
       return <p className="ds-note ds-warn" role="status">Generation failed in Cadence. Check the Library before trying again.</p>;
     case "cancelled":

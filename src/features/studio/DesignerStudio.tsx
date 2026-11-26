@@ -3,9 +3,7 @@ import type { DrawerAssetContext, StudioAsset, StudioHost, StudioSnapshot } from
 import { AssetDetail } from "./AssetDetail";
 import { CreatePanel } from "./CreatePanel";
 import { Library } from "./Library";
-import { describeCreator } from "./model";
 import { useStudio } from "./state";
-import { ReferencePicker } from "./ReferencePicker";
 import "./studio.css";
 
 const WAITING = new Set(["awaiting_host", "catalog_loading"]);
@@ -65,7 +63,6 @@ export function DesignerStudio({ host }: { host: StudioHost }) {
 function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof useStudio> }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   // `try` asks the board for its drawer; a refusal (older host, or no drawer
   // capability on this mount) falls back to the in-frame panel for this session.
   const [drawerMode, setDrawerMode] = useState<"try" | "inframe">("try");
@@ -77,10 +74,12 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
   const jobs = snapshot.status === "ready" ? snapshot.jobs : [];
   const actor = snapshot.status === "ready" ? snapshot.currentActor : null;
   const selected = assets.find((a) => a.id === selectedId) ?? null;
+  const canGenerate = snapshot.status === "ready" && snapshot.capabilities.generate;
   const canPublish = snapshot.status === "ready" && snapshot.capabilities.publish;
   const canDownload = snapshot.status === "ready" && snapshot.capabilities.download;
   const canRefine = snapshot.status === "ready" && snapshot.capabilities.refineInChat;
-  const contextKey = snapshot.status === "ready" ? snapshot.conversationContext : "";
+  const settledAssetId = studio.phase.kind === "completed" ? studio.phase.assetId : undefined;
+  const settledAsset = settledAssetId ? assets.find((a) => a.id === settledAssetId) ?? null : null;
 
   function openCreation() {
     setSelectedId(null);
@@ -110,12 +109,22 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
 
       <div className={`ds-library${createOpen || selected ? " ds-pane-present" : ""}`}>
         <div className="ds-canvas">
-          <Library status={status} assets={assets} actor={actor} selectedId={selectedId} onSelect={(asset) => void openAsset(asset)} onCreate={openCreation} createOpen={createOpen} host={host} canRefine={canRefine} onChooseReference={() => setPickerOpen(true)} />
-          {jobs.length > 0 && (
-            <ul className="ds-jobs" aria-label="Jobs">
-              {jobs.map((j) => <li key={j.id}>{j.task}: {j.state}. {describeCreator(j.creator)}. {j.note}</li>)}
-            </ul>
-          )}
+          <Library
+            status={status}
+            assets={assets}
+            jobs={jobs}
+            actor={actor}
+            selectedId={selectedId}
+            onSelect={(asset) => void openAsset(asset)}
+            onSelectJob={openCreation}
+            onCreate={openCreation}
+            onRefresh={() => host.refresh()}
+            createOpen={createOpen}
+            host={host}
+            canGenerate={canGenerate}
+            canPublish={canPublish}
+            canRefine={canRefine}
+          />
         </div>
         {createOpen && (
           <CreatePanel
@@ -126,10 +135,14 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
             busy={studio.busy}
             generateAvailable={studio.generateAvailable}
             locked={studio.locked}
+            host={host}
+            settledAsset={settledAsset}
             onRequest={studio.requestGeneration}
             onStartOver={studio.startOver}
-            canRefine={canRefine}
-            onChooseReference={() => setPickerOpen(true)}
+            onOpenAsset={(target) => {
+              setCreateOpen(false);
+              void openAsset(target);
+            }}
             onClose={() => setCreateOpen(false)}
           />
         )}
@@ -144,13 +157,11 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
             canRefine={canRefine}
             sourceAssets={assets}
             onRefine={(asset) => attachToChat(host, snapshot, asset)}
+            onSelectAsset={(target) => void openAsset(target)}
             onClose={() => setSelectedId(null)}
           />
         )}
       </div>
-      {pickerOpen && snapshot.status === "ready" && canRefine && (
-        <ReferencePicker key={contextKey} assets={assets} host={host} onChoose={(asset) => attachToChat(host, snapshot, asset)} onClose={() => setPickerOpen(false)} />
-      )}
     </main>
   );
 }
@@ -160,6 +171,7 @@ function Primary({ host, studio }: { host: StudioHost; studio: ReturnType<typeof
  *  frame's own catalog and must still be the same revision. */
 function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSnapshot }) {
   const [context, setContext] = useState<DrawerAssetContext | null | "loading">("loading");
+  const [overrideAssetId, setOverrideAssetId] = useState<string | null>(null);
   // The opened revision is checked once, when the asset first resolves. After
   // that the drawer follows the asset by id, so this frame's own confirmed
   // publish (revision + 1) stays visible instead of reading as a conflict.
@@ -179,12 +191,15 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
   else if (snapshot.status !== "ready" || context === "loading") message = "Loading this image…";
   else if (context === null) message = "This image could not be opened here. Close this panel and open it again from the Library.";
   else {
-    asset = snapshot.assets.find((a) => a.id === context.assetId) ?? null;
-    const state = verified === "pending" && asset ? (asset.revision === context.revision ? "ok" : "stale") : verified;
+    const targetId = overrideAssetId ?? context.assetId;
+    asset = snapshot.assets.find((a) => a.id === targetId) ?? null;
     if (!asset) message = "This image is no longer in the Library.";
-    else if (state === "stale") {
-      message = "This image changed since you opened it. Close this panel and open it again from the Library.";
-      asset = null;
+    else if (overrideAssetId === null) {
+      const state = verified === "pending" ? (asset.revision === context.revision ? "ok" : "stale") : verified;
+      if (state === "stale") {
+        message = "This image changed since you opened it. Close this panel and open it again from the Library.";
+        asset = null;
+      }
     }
   }
   const firstAsset = context !== "loading" && context !== null && snapshot.status === "ready"
@@ -198,6 +213,7 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
     <main className="studio ds-in-drawer" aria-label="Designer Studio image details">
       {asset && snapshot.status === "ready" ? (
         <AssetDetail
+          key={`${asset.id}:${asset.revision}`}
           chrome="host"
           asset={asset}
           canPublish={snapshot.capabilities.publish}
@@ -206,6 +222,7 @@ function DrawerDetail({ host, snapshot }: { host: StudioHost; snapshot: StudioSn
           lineageJobs={[]}
           host={host}
           sourceAssets={snapshot.assets}
+          onSelectAsset={(target) => setOverrideAssetId(target.id)}
           onRefine={async (target) => {
             const error = await attachToChat(host, snapshot, target);
             // Attached: close the drawer so the chat composer is in view.

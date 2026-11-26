@@ -8,17 +8,22 @@ Canonical implementation proposal: `/tmp/designer-studio-plan-01a12a14/design-pl
 
 CSS: the host injects the `cadence-kit/1` document (`design/tokens.css`, `design/kit.css`, and the frame additions in `src/daemon/screen_kit.css`) and stamps `data-cadence-kit="cadence-kit/1"` on the frame. The app uses the kit's real classes (`.btn`, `.field`, `.seg`, `.drawer`) and `src/features/studio/studio.css` defines only `.studio` / `ds-*` layout. The stamp is a compatibility check, not authority.
 
-## Retained-image chat refinement — DSN-4 / CAD-1482
+## Retained-image chat refinement — DSN-4 / CAD-1482 / DSN-16
 
 The app stays on the host's `cadence-kit/1`, `screen.v2` and
-`screen-media.v1` contracts. It owns the Library, compact full-height drawers,
-visual reference picker and creative brief. The host owns chat, image custody,
-runtime authorization, model/price review, approval and funded execution.
+`screen-media.v1` contracts. It owns the Library (with live Generating Ghost
+Card progress, view-only Member workspace library presentation, and lineage
+parent/result comparison), compact full-height drawers and creative brief. The
+host owns chat, image custody, runtime authorization, model/price review,
+approval and funded execution.
 
-- **Refine in chat** queues one captured asset/revision in the correct host
-  composer. It does not send a message or generate an image.
-- Authorized PNG/JPEG previews come from retained host bytes, not provider URLs.
-  Unsupported hosts keep previews and reference attachment unavailable.
+- Selecting any image opens its detail drawer where **Refine in chat** queues
+  one captured asset/revision in the host composer. It does not send a message
+  or generate an image.
+- Authorized PNG/JPEG/WebP originals and cached JPEG previews come from retained
+  host custody bytes, not provider URLs (and preview cache entries carry forward
+  across publish). Unsupported hosts keep previews and reference attachment
+  unavailable.
 - A supported assistant receives real image content for the sent turn. A
   text-only runtime must refuse image inspection honestly; the app never changes
   a runtime/provider or treats an asset label as vision.

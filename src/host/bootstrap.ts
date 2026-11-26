@@ -29,6 +29,7 @@ import {
   type StudioCreator,
   type StudioHost,
   type StudioIntent,
+  type StudioJob,
   type StudioRunState,
   type StudioSnapshot,
   type StudioSurface,
@@ -70,7 +71,8 @@ export const KIT_CONTRACT = "cadence-kit/1";
 /** The host's call queue holds 8 calls; a ninth closes the port. */
 const CALLS_IN_FLIGHT_MAX = 8;
 const CALL_TIMEOUT_MS = 30_000;
-const CATALOG_PAGE = 8;
+const CATALOG_PAGE = 20;
+const PREVIEW_CONCURRENCY = 3;
 const CURSOR_MAX = 160;
 const PUBLISH_ASSET_ID = /^med-[0-9a-f]{32}$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -83,6 +85,9 @@ const SLOT_TIMEOUT_MS = 180_000;
 /** Original download slot wait: its own bound, separate from generation and metadata. */
 const DOWNLOAD_SLOT_TIMEOUT_MS = 120_000;
 const DOWNLOAD_UNCERTAIN = "We could not confirm the original download. Check your browser's downloads before trying again.";
+const POLL_BACKOFF_MS = [3_000, 5_000, 8_000, 10_000] as const;
+const FOCUS_THROTTLE_IDLE_MS = 15_000;
+const FOCUS_THROTTLE_ACTIVE_MS = 2_000;
 /** The native request-id grammar the tool/run channel enforces. */
 const NATIVE_REQUEST_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RUN_ID = /^run-[0-9a-f]{32}$/;
@@ -99,7 +104,7 @@ type Outcome = { ok: true; data: unknown } | { ok: false; refusal: Refusal } | {
 type Catalog =
   | { kind: "none" }
   | { kind: "failed"; reason: string }
-  | { kind: "ready"; assets: StudioAsset[]; actor: StudioActor };
+  | { kind: "ready"; assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor };
 
 /** Connect to the host, or report why this build cannot reach one. */
 export function connectFrameHost(): StudioHost {
@@ -120,6 +125,7 @@ export function connectFrameHost(): StudioHost {
   let catalog: Catalog = { kind: "none" };
   let loadToken = 0;
   let loadInFlight = false;
+  let lastLoadAt = 0;
   let callSeq = 0;
   /** The host-derived `run_receipts` marker from the last v2 push — only
    *  `=== 1` on a v2 screen counts; anything else is ignored. */
@@ -139,6 +145,9 @@ export function connectFrameHost(): StudioHost {
    *  a proper unconfirmed-free refusal. A nonterminal run, an uncertain
    *  outcome or a close keeps it — no silent second paid request. */
   let genLocked = false;
+  let activeRunId: string | null = null;
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollAttempt = 0;
   let genSeq = 0;
   /** Parent-derived `original_downloads` support (v2, marker 1). Support only, not permission. */
   let downloadSupport = false;
@@ -156,9 +165,8 @@ export function connectFrameHost(): StudioHost {
   let previewSupport = false;
   let chatReferenceSupport = false;
   let conversationContext = "";
-  // Thumbnails, the picker and the detail drawer share the bounded call queue.
-  // Serialize preview reads so a large Library cannot overflow the host's eight calls.
-  let previewTail: Promise<void> = Promise.resolve();
+  let previewActive = 0;
+  const previewWaiters: Array<() => void> = [];
   /** Host-assigned role. A host without `screen-surfaces.v1` never sends one,
    *  so the frame stays primary and the in-frame panels remain the fallback. */
   let surfaceState: StudioSurface = { role: "primary", modal: false };
@@ -182,7 +190,7 @@ export function connectFrameHost(): StudioHost {
       currentActor: catalog.actor,
       conversationContext,
       assets: catalog.assets,
-      jobs: [],
+      jobs: catalog.jobs,
     };
   }
 
@@ -242,8 +250,9 @@ export function connectFrameHost(): StudioHost {
 
   /** Every catalog page, in order. A repeated cursor or a malformed page is an
    *  invalid reply: the catalog is never shown partly or as a fictional empty. */
-  async function readCatalog(): Promise<{ assets: StudioAsset[]; actor: StudioActor } | string> {
+  async function readCatalog(): Promise<{ assets: StudioAsset[]; jobs: StudioJob[]; actor: StudioActor } | string> {
     const assets: StudioAsset[] = [];
+    let jobs: StudioJob[] = [];
     const ids = new Set<string>();
     const cursors = new Set<string>();
     let cursor: string | undefined;
@@ -258,17 +267,49 @@ export function connectFrameHost(): StudioHost {
       const next = page?.next_cursor;
       if (!rows || !actor || !(next === null || (typeof next === "string" && next.length > 0 && next.length <= CURSOR_MAX)))
         return "invalid_reply";
+      if (cursor === undefined && Array.isArray(page?.jobs)) {
+        jobs = page.jobs.map((row) => parseJob(row, actor)).filter((job): job is StudioJob => job !== null);
+      }
       for (const row of rows) {
         const asset = parseAsset(row);
         if (!asset || ids.has(asset.id)) return "invalid_reply";
         ids.add(asset.id);
         assets.push(asset);
       }
-      if (next === null) return { assets, actor };
+      if (next === null) return { assets, jobs, actor };
       if (cursors.has(next)) return "repeated_cursor";
       cursors.add(next);
       cursor = next;
     }
+  }
+
+  function clearPoll(): void {
+    if (pollTimer !== null) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function isHidden(): boolean {
+    return typeof document !== "undefined" && (document as { hidden?: boolean }).hidden === true;
+  }
+
+  function hasActiveJobs(): boolean {
+    if (activeRunId !== null) return true;
+    return catalog.kind === "ready" && catalog.jobs.some((job) => job.state === "queued" || job.state === "running");
+  }
+
+  function schedulePoll(): void {
+    clearPoll();
+    if (closedReason || !scope || !verbs.has("media.read") || isHidden()) return;
+    const delay = POLL_BACKOFF_MS[Math.min(pollAttempt, POLL_BACKOFF_MS.length - 1)];
+    pollTimer = setTimeout(() => {
+      pollTimer = null;
+      if (closedReason || !scope || !verbs.has("media.read") || isHidden()) return;
+      pollAttempt = Math.min(pollAttempt + 1, POLL_BACKOFF_MS.length - 1);
+      if (!loadInFlight) startLoad();
+      else schedulePoll();
+    }, delay);
   }
 
   /** Start a catalog read. A newer read supersedes this one, and a superseded
@@ -276,22 +317,49 @@ export function connectFrameHost(): StudioHost {
   function startLoad(): void {
     const token = ++loadToken;
     loadInFlight = true;
+    lastLoadAt = Date.now();
     void readCatalog().then((result) => {
       if (token !== loadToken) return;
       loadInFlight = false;
       if (typeof result === "string") {
         catalog = { kind: "failed", reason: result };
+        clearPoll();
       } else {
-        catalog = { kind: "ready", assets: result.assets, actor: result.actor };
+        catalog = { kind: "ready", assets: result.assets, jobs: result.jobs, actor: result.actor };
+        if (activeRunId !== null) {
+          const matched = result.jobs.find((job) => job.id === activeRunId);
+          if (matched && (matched.state === "ready" || matched.state === "failed")) {
+            genLocked = false;
+            activeRunId = null;
+          }
+        }
+        const anyActive =
+          activeRunId !== null ||
+          result.jobs.some((job) => job.state === "queued" || job.state === "running");
+        if (anyActive) schedulePoll();
+        else clearPoll();
       }
       refresh();
     });
   }
 
   // Chat refinement completes outside this frame. Returning to the Library
-  // reads current retained results; it never polls, approves or generates.
+  // reads current retained results, throttled to avoid redundant reloads.
   function onFocus(): void {
-    if (!closedReason && scope && verbs.has("media.read") && !loadInFlight) startLoad();
+    if (closedReason || !scope || !verbs.has("media.read") || loadInFlight) return;
+    const minGap = hasActiveJobs() ? FOCUS_THROTTLE_ACTIVE_MS : FOCUS_THROTTLE_IDLE_MS;
+    if (Date.now() - lastLoadAt < minGap) return;
+    startLoad();
+  }
+
+  function onVisibilityChange(): void {
+    if (isHidden()) {
+      clearPoll();
+    } else if (hasActiveJobs() && !closedReason && scope && verbs.has("media.read")) {
+      pollAttempt = 0;
+      if (!loadInFlight) startLoad();
+      else schedulePoll();
+    }
   }
 
   function onPush(data: Record<string, unknown>): void {
@@ -331,6 +399,8 @@ export function connectFrameHost(): StudioHost {
     closedReason = reason;
     loadToken += 1;
     loadInFlight = false;
+    clearPoll();
+    activeRunId = null;
     catalog = { kind: "none" };
     scope = null;
     verbs = new Set();
@@ -408,7 +478,7 @@ export function connectFrameHost(): StudioHost {
   }
 
   /** One slot-state for the live generation. `pending` leaves the promise
-   *  open (it may follow a tap much later); `refused`/`done` resolve it.
+   *  open for the named 180s confirmation window; `refused`/`done` resolve it.
    *  Anything malformed — or a `refused` without a real refusal payload, or
    *  a late `refused` after an earlier ack — is uncertain, and the slot lock
    *  is kept so a paid request is never silently resent. */
@@ -443,10 +513,15 @@ export function connectFrameHost(): StudioHost {
       const state = r.state as StudioRunState;
       // `done` is transport completion, not native success: only a terminal
       // run state releases the slot lock; awaiting_approval/approved/running
-      // resolve the receipt but keep generation locked.
+      // resolve the receipt, keep generation locked, and start catalog polling.
       if (state === "succeeded" || state === "failed" || state === "cancelled") {
         genLocked = false;
+        activeRunId = null;
         if (state === "succeeded" && verbs.has("media.read")) startLoad();
+      } else {
+        activeRunId = r.run_id;
+        pollAttempt = 0;
+        schedulePoll();
       }
       settleGeneration({ status: "generation_result", requestId: gen.requestId, runId: r.run_id, state });
       return;
@@ -517,6 +592,9 @@ export function connectFrameHost(): StudioHost {
   port.start();
   window.addEventListener("pagehide", () => closeWith("unloaded"));
   window.addEventListener("focus", onFocus);
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", onVisibilityChange);
+  }
 
   window.parent.postMessage(
     { v: 1, op: "init", tag: boot.tag, bridge_nonce: boot.bridge_nonce, generation: boot.generation },
@@ -578,9 +656,27 @@ export function connectFrameHost(): StudioHost {
     return { status: "uncertain", requestId: `chat-${randomHex(6)}`, text: "Could not confirm attachment. Check the chat composer before trying again." };
   }
 
+  function runPreviewTask<T>(task: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const exec = () => {
+        previewActive += 1;
+        void task().then(resolve, reject).finally(() => {
+          previewActive -= 1;
+          const next = previewWaiters.shift();
+          if (next) next();
+        });
+      };
+      if (previewActive < PREVIEW_CONCURRENCY && pending.size < CALLS_IN_FLIGHT_MAX - 2) {
+        exec();
+      } else {
+        previewWaiters.push(exec);
+      }
+    });
+  }
+
   function preview(assetId: string, revision: number): Promise<string | null> {
     const capturedScope = scope;
-    const result = previewTail.then(async () => {
+    return runPreviewTask(async () => {
       const current = derive();
       if (scope !== capturedScope || current.status !== "ready" || !current.capabilities.previews ||
           !current.assets.some((asset) => asset.id === assetId && asset.revision === revision && asset.kind === "image")) return null;
@@ -594,8 +690,6 @@ export function connectFrameHost(): StudioHost {
           image.base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.base64)) return null;
       return `data:${image.media_type};base64,${image.base64}`;
     });
-    previewTail = result.then(() => undefined, () => undefined);
-    return result;
   }
 
   /** The image-only run.start slot. Every value the wire carries is captured
@@ -705,6 +799,11 @@ export function connectFrameHost(): StudioHost {
       };
     },
     submit,
+    refresh: () => {
+      if (!closedReason && scope && verbs.has("media.read") && !loadInFlight) {
+        startLoad();
+      }
+    },
     preview,
     surface: () => surfaceState,
     openDrawer,
@@ -779,7 +878,49 @@ function parseAsset(value: unknown): StudioAsset | null {
     createdAt: a.created * 1000,
     revision: a.revision,
     ...(typeof a.prompt === "string" ? { prompt: a.prompt } : {}),
+    ...(typeof a.model === "string" && a.model.length > 0 ? { model: a.model } : {}),
+    ...(typeof a.media_type === "string" && a.media_type.length > 0 ? { mediaType: a.media_type } : {}),
+    ...(isCount(a.size_bytes, 1) ? { sizeBytes: a.size_bytes } : {}),
     ...(Array.isArray(a.lineage) && a.lineage.every((id) => typeof id === "string" && PUBLISH_ASSET_ID.test(id)) ? { lineage: a.lineage as string[] } : {}),
+  };
+}
+
+/** A host-projected studio run row, or null when unrecognised. */
+function parseJob(value: unknown, fallbackActor: StudioActor): StudioJob | null {
+  const j = record(value);
+  if (!j || typeof j.id !== "string" || j.id.length === 0 || j.id.length > 128) return null;
+  if (typeof j.state !== "string") return null;
+  let state: StudioJob["state"];
+  if (j.state === "awaiting_approval" || j.state === "approved") {
+    state = "queued";
+  } else if (j.state === "running") {
+    state = "running";
+  } else if (j.state === "succeeded") {
+    state = "ready";
+  } else if (j.state === "failed" || j.state === "cancelled") {
+    state = "failed";
+  } else {
+    return null;
+  }
+  const note =
+    state === "ready"
+      ? "Ready as a draft"
+      : state === "failed"
+        ? "Generation failed"
+        : "Generating in Cadence";
+  return {
+    id: j.id,
+    task: j.workflow === "refine-image" ? "edit" : "image",
+    state,
+    creator: fallbackActor,
+    note,
+    ...(typeof j.asset_id === "string" && j.asset_id.length > 0 ? { assetId: j.asset_id } : {}),
+    ...(typeof j.title === "string" && j.title.length > 0 ? { title: j.title } : {}),
+    ...(typeof j.prompt === "string" && j.prompt.length > 0 ? { prompt: j.prompt } : {}),
+    ...(typeof j.model === "string" && j.model.length > 0 ? { model: j.model } : {}),
+    ...(typeof j.source_asset_id === "string" && j.source_asset_id.length > 0 ? { sourceAssetId: j.source_asset_id } : {}),
+    ...(isEpoch(j.created) ? { createdAt: j.created * 1000 } : {}),
+    ...(isEpoch(j.updated) ? { updatedAt: j.updated * 1000 } : {}),
   };
 }
 

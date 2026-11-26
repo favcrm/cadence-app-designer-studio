@@ -60,7 +60,9 @@ export interface StudioAsset {
   prompt?: string;
   lineage?: string[];
   jobId?: string;
-  model?: ModelId;
+  model?: string;
+  mediaType?: string;
+  sizeBytes?: number;
   checksum?: string;
 }
 
@@ -70,6 +72,12 @@ export interface StudioJob {
   state: "queued" | "running" | "ready" | "failed" | "uncertain" | "refused";
   creator: StudioCreator;
   assetId?: string;
+  title?: string;
+  prompt?: string;
+  model?: string;
+  sourceAssetId?: string;
+  createdAt?: number;
+  updatedAt?: number;
   /** Plain line from the host; never raw provider text. */
   note: string;
 }
@@ -162,6 +170,7 @@ export interface StudioHost {
   snapshot(): StudioSnapshot;
   subscribe(listener: () => void): () => void;
   submit(intent: StudioIntent): Promise<Receipt>;
+  refresh(): void;
   /** Authorized, bounded image bytes, encoded locally; never a provider URL. */
   preview(assetId: string, revision: number): Promise<string | null>;
   surface(): StudioSurface;
@@ -179,6 +188,7 @@ export function unavailableHost(reason: string): StudioHost {
   return {
     snapshot: () => snapshot,
     subscribe: () => () => {},
+    refresh: () => {},
     preview: async () => null,
     surface: () => ({ role: "primary", modal: false }),
     openDrawer: async () => "refused",

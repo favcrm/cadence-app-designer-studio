@@ -20,7 +20,7 @@ export interface CreateDraft {
   references: string[];
 }
 
-/** Workspace: every asset the viewer is authorized to see. Library: the
- *  published, curated subset. Mine: a creator filter over the same set. */
-export type LibraryScope = "all" | "library" | "mine" | "drafts";
+/** All: every authorized asset. Library: curated published assets.
+ *  Drafts: creator's/workspace drafts awaiting review or publish. */
+export type LibraryScope = "all" | "library" | "drafts";
 export type LibraryKind = "all" | "image" | "video";
